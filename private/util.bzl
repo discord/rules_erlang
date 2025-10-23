@@ -33,6 +33,17 @@ def symlink(ctx, source, dest):
     )
     return out
 
+def _expand_directory(ctx, src, dest_path, mnemonic_noun = "ErlLibs"):
+    dest = ctx.actions.declare_directory(dest_path)
+    ctx.actions.run_shell(
+        inputs = [src],
+        outputs = [dest],
+        command = "cp -RL \"{}\"/* \"{}\"".format(src.path, dest.path),
+        mnemonic = "RulesErlangCopy{noun}ContentsSubdir".format(noun=mnemonic_noun),
+    )
+
+    return dest
+
 def erl_libs_contents(
         ctx,
         target_info = None,
@@ -60,19 +71,20 @@ def erl_libs_contents(
             if src.is_directory:
                 if len(lib_info.beam) != 1:
                     fail("ErlangAppInfo.beam must be a collection of files, or a single ebin dir: {} {}".format(lib_info.app_name, lib_info.beam))
-                dest = ctx.actions.declare_directory(path_join(dep_path, "ebin"))
-                ctx.actions.run_shell(
-                    inputs = [src],
-                    outputs = [dest],
-                    command = "cp -RL \"{}\"/* \"{}\"".format(src.path, dest.path),
-                    mnemonic = "RulesErlangCopyErlLibsContentsSubdir",
-                )
+                dest = _expand_directory(ctx, src, path_join(dep_path, "ebin"), "ErlLibs")
             else:
                 dest = symlink(ctx, src, path_join(dep_path, "ebin", src.basename))
             erl_libs_files.append(dest)
+
         for src in lib_info.priv:
             rp = additional_file_dest_relative_path(dep.label, src)
-            dest = symlink(ctx, src, path_join(dep_path, rp))
+            if not rp.startswith("priv/"):
+                rp = path_join("priv", rp)
+            joined_rp = path_join(dep_path, rp)
+            if src.is_directory:
+                dest = _expand_directory(ctx, src, joined_rp, "Priv")
+            else:
+                dest = symlink(ctx, src, joined_rp)
             erl_libs_files.append(dest)
     for ez in ez_deps:
         if expand_ezs:
