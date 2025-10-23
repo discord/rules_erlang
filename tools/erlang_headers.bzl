@@ -38,9 +38,8 @@ def _erlang_headers_impl(ctx):
         ))
         outs.append(dest)
 
-    include_dir = outs[0] if outs else None
     out_files = depset(outs)
-    includes = depset([include_dir]) if include_dir else depset()
+    includes = depset([o.dirname for o in outs]) if outs else depset()
     compilation_context = cc_common.create_compilation_context(
         headers = out_files,
         system_includes = includes,
