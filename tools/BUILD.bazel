@@ -15,3 +15,8 @@ erlang_vars(
     name = "erlang_vars",
     visibility = ["//visibility:public"],
 )
+
+exports_files(
+    ["run_script.sh.tpl"],
+    visibility = ["//visibility:public"],
+)

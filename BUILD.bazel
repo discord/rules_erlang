@@ -1,5 +1,9 @@
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load(":util_test.bzl", "util_test_suite")
+load(
+    "//:erlang_release.bzl",
+    "erlang_release",
+)
 
 config_setting(
     name = "debug_build",
@@ -33,3 +37,12 @@ string_flag(
 )
 
 util_test_suite(name = "util_tests")
+
+# Test target for erlang_release rule
+# Create a test release from the erl_attrs_to_json tool
+erlang_release(
+    name = "test_erl_attrs_release",
+    app = "//tools/erl_attrs_to_json:erlang_app",
+    release_name = "erl_attrs_rel",
+    release_version = "1.0.0",
+)
