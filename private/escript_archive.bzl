@@ -80,8 +80,7 @@ def _impl(ctx):
 
 "{erlang_home}"/bin/erl \\
     -noshell \\
-    -eval 'io:format("Assembling {name} escript...~n", []),
-ContentsDir = "{contents_dir}",
+    -eval 'ContentsDir = "{contents_dir}",
 Entries = filelib:fold_files(
     ContentsDir, "", true,
     fun(Path, Entries) ->
@@ -109,14 +108,12 @@ ArchiveEntries = maps:to_list(UniqueEntries),
 ok = escript:create("{output}",
                     [{headers}
                      {{archive, ArchiveEntries, []}}]),
-io:format("done.~n", []),
 halt().
 '
 """.format(
         maybe_install_erlang = maybe_install_erlang(ctx),
         erlang_home = erlang_home,
         contents_dir = contents_dir.path,
-        name = name,
         flat = str(ctx.attr.flat).lower(),
         headers = "".join(["{}, ".format(h) for h in ctx.attr.headers]),
         output = output.path,
