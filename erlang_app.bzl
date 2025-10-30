@@ -35,7 +35,7 @@ def _erlang_app(
         name = None,
         app_name = "",
         app_version = "",
-        app_description = "",
+        app_description = "An application",
         app_module = "",
         app_registered = [],
         app_env = "",

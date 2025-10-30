@@ -77,7 +77,22 @@ EOF
         )
     else:
         app_module = ctx.attr.app_module if ctx.attr.app_module != "" else ctx.attr.app_name + "_app"
-        if len([m for m in ctx.files.modules if m.basename == app_module + ".beam"]) > 0:
+
+        # Check if the module exists - handle both files and directories
+        module_found = False
+        for m in ctx.files.modules:
+            if m.is_directory:
+                # If modules contains a directory, check files within it
+                # We need to list the directory contents at analysis time
+                # For now, assume the module exists if we have a directory
+                # (the actual check happens at build time in the shell script)
+                module_found = True
+                break
+            elif m.basename == app_module + ".beam":
+                module_found = True
+                break
+
+        if module_found:
             registered_list = "[" + ",".join([ctx.attr.app_name + "_sup"] + ctx.attr.app_registered) + "]"
         else:
             app_module = ""
@@ -178,9 +193,28 @@ EOF
 fi
 
 if [ -n '{app_module}' ]; then
-    cat << 'EOF' | "{erlang_home}"/bin/escript {app_file_tool} mod {out} > {out}.tmp && mv {out}.tmp {out}
-{{{app_module}, []}}.
+    # Check if the module actually exists before adding mod entry
+    MODULE_EXISTS=0
+    module_paths={modules}
+    set +u
+    for f in ${{module_paths[@]}}; do
+        if [[ -d "$f" ]]; then
+            if [[ -f "$f/{app_module}.beam" ]]; then
+                MODULE_EXISTS=1
+                break
+            fi
+        elif [[ "$(basename "$f" .beam)" == "{app_module}" ]]; then
+            MODULE_EXISTS=1
+            break
+        fi
+    done
+    set -u
+
+    if [[ $MODULE_EXISTS -eq 1 ]]; then
+        cat << 'EOF' | "{erlang_home}"/bin/escript {app_file_tool} mod {out} > {out}.tmp && mv {out}.tmp {out}
+{{'{app_module}', []}}.
 EOF
+    fi
 fi
 
 if [ -n '{env}' ]; then
