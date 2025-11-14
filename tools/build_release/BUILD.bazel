@@ -1,0 +1,44 @@
+load("//:escript.bzl", "escript_archive", "escript_wrapper")
+load(
+    "//:erlang_app.bzl",
+    "erlang_app",
+    "DEFAULT_ERLC_OPTS",
+)
+
+# erlc_opts_file(
+#     name = "erlc_opts",
+#     values = DEFAULT_ERLC_OPTS,
+# )
+# 
+# erlang_bytecode(
+#     name = "beam_files",
+#     srcs = glob(["src/*.erl"]),
+#     dest = "ebin",
+#     erlc_opts = ":erlc_opts",
+# )
+# 
+# escript_flat(
+#     name = "build_release",
+#     beam = ":beam_files",
+#     visibility = ["//visibility:public"],
+# )
+
+erlang_app(
+    name = "erlang_app",
+    app_name = "build_release",
+)
+
+escript_archive(
+    name = "build_release",
+    app = ":erlang_app",
+
+    visibility = ["//visibility:public"],
+)
+
+escript_wrapper(
+    name = "wrapper",
+    escript = ":build_release",
+    out = "wrapper.bash",
+
+    visibility = ["//visibility:public"],
+)

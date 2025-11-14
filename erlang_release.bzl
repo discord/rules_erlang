@@ -1,3 +1,7 @@
+"""
+Takes a compiled BEAM application (ErlangAppInfo/.app+.beam files)
+Outputs release-specific assets (ErlangReleaseInfo/vm args+boot scripts+bytecode+app info)
+"""
 load(
     "//:erlang_app_info.bzl",
     "ErlangAppInfo",
@@ -20,6 +24,7 @@ ErlangReleaseInfo = provider(
         "app_info": "ErlangAppInfo of released app",
         "release_name": "Name of the release",
         "release_version": "Version of the release",
+        "sys_config": "Optional sys.config File object",
     },
 )
 
@@ -101,6 +106,9 @@ def _impl(ctx):
     script = """set -euo pipefail
 
 {maybe_install_erlang}
+
+# Set up ERL_LIBS to include OTP libraries so build_release.erl can find them
+export ERL_LIBS="{erlang_home}/lib"
 
 # Create output directory
 output_dir=$(dirname "{rel_file}")
@@ -184,6 +192,7 @@ fi
             app_info = ctx.attr.app[ErlangAppInfo],
             release_name = release_name,
             release_version = release_version,
+            sys_config = None,  # TODO: Add sys_config support to erlang_release rule
         ),
     ]
 
