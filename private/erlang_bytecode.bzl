@@ -128,7 +128,7 @@ fi
     )
 
     inputs = depset(
-        direct = ctx.files.hdrs + ctx.files.srcs + ctx.files.beam + erl_libs_files,
+        direct = ctx.files.hdrs + ctx.files.srcs + ctx.files.beam + ctx.files.data + erl_libs_files,
         transitive = [runfiles.files],
     )
 
@@ -175,6 +175,10 @@ erlang_bytecode = rule(
         "erlc_opts": attr.string_list(),
         "dest": attr.string(
             default = "ebin",
+        ),
+        "data": attr.label_list(
+            allow_files = True,
+            default = [],
         ),
     },
     toolchains = ["//tools:toolchain_type"],
