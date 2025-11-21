@@ -57,7 +57,10 @@ def erl_libs_contents(
         dep_path = path_join(dir, target_info.app_name)
         for hdr in target_info.include:
             rp = additional_file_dest_relative_path(ctx.label, hdr)
-            dest = symlink(ctx, hdr, path_join(dep_path, rp))
+            if hdr.is_directory:
+                dest = _expand_directory(ctx, hdr, path_join(dep_path, rp), "Headers")
+            else:
+                dest = symlink(ctx, hdr, path_join(dep_path, rp))
             erl_libs_files.append(dest)
     for dep in deps:
         lib_info = dep[ErlangAppInfo]
@@ -65,7 +68,10 @@ def erl_libs_contents(
         if headers:
             for hdr in lib_info.include:
                 rp = additional_file_dest_relative_path(dep.label, hdr)
-                dest = symlink(ctx, hdr, path_join(dep_path, rp))
+                if hdr.is_directory:
+                    dest = _expand_directory(ctx, hdr, path_join(dep_path, rp), "Headers")
+                else:
+                    dest = symlink(ctx, hdr, path_join(dep_path, rp))
                 erl_libs_files.append(dest)
         for src in lib_info.beam:
             if src.is_directory:
