@@ -72,19 +72,29 @@ def _impl(ctx):
 
     auth = _get_auth(ctx, all_urls)
 
+    download_kwargs = {
+        "output": ".",
+        "type": "tar",
+        "canonical_id": ctx.attr.canonical_id,
+        "auth": auth,
+    }
+    if ctx.attr.integrity:
+        download_kwargs["integrity"] = ctx.attr.integrity
+    elif ctx.attr.sha256:
+        download_kwargs["sha256"] = ctx.attr.sha256
+
     download_info = ctx.download_and_extract(
         all_urls,
-        ".",
-        ctx.attr.sha256,
-        "tar",
-        canonical_id = ctx.attr.canonical_id,
-        auth = auth,
+        **download_kwargs
     )
     ctx.extract("contents.tar.gz")
     workspace_and_buildfile(ctx)
     patch(ctx)
 
-    return update_attrs(ctx.attr, _hex_archive_attrs.keys(), {"sha256": download_info.sha256})
+    return update_attrs(ctx.attr, _hex_archive_attrs.keys(), {
+        "sha256": download_info.sha256,
+        "integrity": download_info.integrity,
+    })
 
 _hex_archive_attrs = {
     "package_name": attr.string(),
@@ -94,7 +104,15 @@ _hex_archive_attrs = {
 This must match the SHA-256 of the file downloaded. _It is a security risk
 to omit the SHA-256 as remote files can change._ At best omitting this
 field will make your build non-hermetic. It is optional to make development
-easier but should be set before shipping.""",
+easier but should be set before shipping. Mutually exclusive with integrity.""",
+    ),
+    "integrity": attr.string(
+        doc = """Expected checksum in Subresource Integrity format of the file
+downloaded. This must match the checksum of the file downloaded. _It is a
+security risk to omit the checksum as remote files can change._ At best
+omitting this field will make your build non-hermetic. It is optional to make
+development easier but should be set before shipping. Mutually exclusive
+with sha256.""",
     ),
     "canonical_id": attr.string(
         doc = """A canonical id of the archive downloaded.
