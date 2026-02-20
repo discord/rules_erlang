@@ -84,7 +84,7 @@ def erl_libs_contents(
 
         for src in lib_info.priv:
             rp = additional_file_dest_relative_path(dep.label, src)
-            if not rp.startswith("priv/"):
+            if not rp.startswith("priv/") and not rp == 'priv':
                 rp = path_join("priv", rp)
             joined_rp = path_join(dep_path, rp)
             if src.is_directory:
