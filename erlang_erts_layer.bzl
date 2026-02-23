@@ -32,16 +32,16 @@ def _erlang_erts_layer_impl(ctx):
         outputs = [output_tar],
         command = """set -euo pipefail
 
+ABS_INPUT_TAR="$PWD/{input_tar}"
+ABS_OUTPUT_TAR="$PWD/{output_tar}"
+
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 cd "$WORK_DIR"
 
-# Extract the release tar
-tar -xf {input_tar}
-
-# Re-tar without transformation
-tar -cf {output_tar} lib/erlang
+tar -xf "$ABS_INPUT_TAR"
+tar -cf "$ABS_OUTPUT_TAR" lib/erlang
 
 """.format(
             input_tar = otp_info.release_dir_tar.path,
