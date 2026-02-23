@@ -26,7 +26,7 @@ def _erlang_erts_layer_impl(ctx):
     output_tar = ctx.actions.declare_file(ctx.label.name + ".tar")
 
     # Create script to extract and repackage the tar
-    # The input tar contains lib/erlang/..., we want opt/erlang/...
+    # The input tar contains lib/erlang/, bin/, etc. - we extract just lib/erlang
     ctx.actions.run_shell(
         inputs = [otp_info.release_dir_tar],
         outputs = [output_tar],
