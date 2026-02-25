@@ -19,6 +19,7 @@ erlang_build(
     extra_configure_opts = %{EXTRA_CONFIGURE_OPTS},
     post_configure_cmds = %{POST_CONFIGURE_CMDS},
     extra_make_opts = %{EXTRA_MAKE_OPTS},
+    visibility = ["//visibility:public"],
 )
 
 erlang_toolchain(
