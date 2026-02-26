@@ -8,6 +8,7 @@ def _impl(ctx):
 
     args = ctx.actions.args()
     args.add("-x")
+    args.add("--no-same-owner")
     args.add("--file")
     args.add(ctx.file.archive)
     args.add("--directory")

@@ -113,6 +113,7 @@ ABS_BUILD_DIR="$(mktemp -d)"
 ABS_DEST_DIR="$(mktemp -d)"
 
 tar --extract \\
+    --no-same-owner \\
     --transform 's/{strip_prefix}//' \\
     --file "{archive_path}" \\
     --directory "$ABS_BUILD_DIR"
@@ -173,6 +174,7 @@ tar --create \\
 
 mkdir -p "{install_path}"
 tar --extract \\
+    --no-same-owner \\
     --directory "{install_path}" \\
     --file {erlang_release_tar}
 
