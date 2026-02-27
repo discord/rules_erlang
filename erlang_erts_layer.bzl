@@ -40,7 +40,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 cd "$WORK_DIR"
 
-tar -xf "$ABS_INPUT_TAR"
+tar --no-same-owner -xf "$ABS_INPUT_TAR"
 tar -cf "$ABS_OUTPUT_TAR" lib/erlang
 
 """.format(
