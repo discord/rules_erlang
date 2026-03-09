@@ -18,10 +18,10 @@ exec \\
         VERSION_FILE="{version_file}" \\
     "{erlang_home}"/bin/escript "{escript}" $@
 """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
         erlang_home = erlang_home,
-        version_file = version_file(ctx).path,
-        escript = ctx.file.escript.path,
+        version_file = version_file(ctx).short_path,
+        escript = ctx.file.escript.short_path,
     )
 
     ctx.actions.write(
