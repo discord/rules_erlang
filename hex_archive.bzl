@@ -91,10 +91,16 @@ def _impl(ctx):
     workspace_and_buildfile(ctx)
     patch(ctx)
 
-    return update_attrs(ctx.attr, _hex_archive_attrs.keys(), {
-        "sha256": download_info.sha256,
-        "integrity": download_info.integrity,
-    })
+    update = {}
+    if ctx.attr.integrity:
+        update["integrity"] = download_info.integrity
+    elif ctx.attr.sha256:
+        update["sha256"] = download_info.sha256
+    else:
+        update["sha256"] = download_info.sha256
+        update["integrity"] = download_info.integrity
+
+    return update_attrs(ctx.attr, _hex_archive_attrs.keys(), update)
 
 _hex_archive_attrs = {
     "package_name": attr.string(),
