@@ -45,6 +45,8 @@ def _erlang_config(ctx):
     extra_configure_optss = {}
     post_configure_cmdss = {}
     extra_make_optss = {}
+    extra_target_constraintss = {}
+    extra_exec_constraintss = {}
     owners_by_name = {}
 
     for mod in ctx.modules:
@@ -58,6 +60,8 @@ def _erlang_config(ctx):
             types[erlang.name] = INSTALLATION_TYPE_EXTERNAL
             versions[erlang.name] = erlang.version
             erlang_homes[erlang.name] = erlang.erlang_home
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
             owners_by_name[erlang.name] = mod
 
         for erlang in mod.tags.internal_erlang_from_http_archive:
@@ -76,6 +80,8 @@ def _erlang_config(ctx):
             extra_configure_optss[erlang.name] = erlang.extra_configure_opts
             post_configure_cmdss[erlang.name] = erlang.post_configure_cmds
             extra_make_optss[erlang.name] = erlang.extra_make_opts
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
             owners_by_name[erlang.name] = mod
 
         for erlang in mod.tags.internal_erlang_from_github_release:
@@ -104,6 +110,8 @@ def _erlang_config(ctx):
             extra_configure_optss[erlang.name] = erlang.extra_configure_opts
             post_configure_cmdss[erlang.name] = erlang.post_configure_cmds
             extra_make_optss[erlang.name] = erlang.extra_make_opts
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
             owners_by_name[erlang.name] = mod
 
     _erlang_config_rule(
@@ -119,12 +127,22 @@ def _erlang_config(ctx):
         extra_configure_optss = extra_configure_optss,
         post_configure_cmdss = post_configure_cmdss,
         extra_make_optss = extra_make_optss,
+        extra_target_constraintss = extra_target_constraintss,
+        extra_exec_constraintss = extra_exec_constraintss,
     )
+
+# Documenting for future me, as these tend to be confusing:
+#  - target_compatible_with: the _outputs_ of this toolchain can be used for
+#    these execution platforms
+#  - exec_compatible_with: this toolchain can only _run_ on these execution
+#    platforms
 
 external_erlang_from_path = tag_class(attrs = {
     "name": attr.string(),
     "version": attr.string(),
     "erlang_home": attr.string(),
+    "target_compatible_with": attr.label_list(),
+    "exec_compatible_with": attr.label_list(),
 })
 
 internal_erlang_from_http_archive = tag_class(attrs = {
@@ -137,6 +155,8 @@ internal_erlang_from_http_archive = tag_class(attrs = {
     "extra_configure_opts": attr.string_list(),
     "post_configure_cmds": attr.string_list(),
     "extra_make_opts": attr.string_list(),
+    "target_compatible_with": attr.label_list(),
+    "exec_compatible_with": attr.label_list(),
 })
 
 internal_erlang_from_github_release = tag_class(attrs = {
@@ -151,6 +171,8 @@ internal_erlang_from_github_release = tag_class(attrs = {
     "extra_configure_opts": attr.string_list(),
     "post_configure_cmds": attr.string_list(),
     "extra_make_opts": attr.string_list(),
+    "target_compatible_with": attr.label_list(),
+    "exec_compatible_with": attr.label_list(),
 })
 
 erlang_config = module_extension(

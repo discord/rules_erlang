@@ -22,6 +22,15 @@ def _parse_maybe_semver(version_string):
 def _to_string_list(strings):
     return "[%s]" % ",".join(['"%s"' % s.replace('"', '\\"') for s in strings])
 
+def _format_extra_constraints(constraints):
+    """Format a list of constraint labels as indented BUILD file entries.
+
+    Returns an empty string when no constraints are provided (backwards compatible).
+    """
+    if not constraints:
+        return ""
+    return "".join(['        "%s",\n' % c for c in constraints])
+
 def _impl(repository_ctx):
     rules_erlang_workspace = repository_ctx.attr.rules_erlang_workspace
 
@@ -46,9 +55,18 @@ def _impl(repository_ctx):
             extra_configure_opts = repository_ctx.attr.extra_configure_optss.get(name, []),
             post_configure_cmds = repository_ctx.attr.post_configure_cmdss.get(name, []),
             extra_make_opts = repository_ctx.attr.extra_make_optss.get(name, []),
+            extra_target_constraints = repository_ctx.attr.extra_target_constraintss.get(name, []),
+            extra_exec_constraints = repository_ctx.attr.extra_exec_constraintss.get(name, []),
         )
 
     for (name, props) in erlang_installations.items():
+        extra_target_constraints = _format_extra_constraints(
+            getattr(props, "extra_target_constraints", []),
+        )
+        extra_exec_constraints = _format_extra_constraints(
+            getattr(props, "extra_exec_constraints", []),
+        )
+
         if props.type == INSTALLATION_TYPE_EXTERNAL:
             repository_ctx.template(
                 "{}/BUILD.bazel".format(name),
@@ -60,6 +78,8 @@ def _impl(repository_ctx):
                     "%{ERLANG_MAJOR}": props.major,
                     "%{ERLANG_MINOR}": props.minor,
                     "%{RULES_ERLANG_WORKSPACE}": rules_erlang_workspace,
+                    "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
+                    "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
                 },
                 False,
             )
@@ -80,6 +100,8 @@ def _impl(repository_ctx):
                     "%{EXTRA_CONFIGURE_OPTS}": _to_string_list(props.extra_configure_opts),
                     "%{POST_CONFIGURE_CMDS}": _to_string_list(props.post_configure_cmds),
                     "%{EXTRA_MAKE_OPTS}": _to_string_list(props.extra_make_opts),
+                    "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
+                    "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
                 },
                 False,
             )
@@ -126,6 +148,8 @@ erlang_config = repository_rule(
         "extra_configure_optss": attr.string_list_dict(),
         "post_configure_cmdss": attr.string_list_dict(),
         "extra_make_optss": attr.string_list_dict(),
+        "extra_target_constraintss": attr.string_list_dict(),
+        "extra_exec_constraintss": attr.string_list_dict(),
     },
     environ = [
         ERLANG_HOME_ENV_VAR,

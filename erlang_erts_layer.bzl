@@ -2,11 +2,6 @@
 Create a tar layer containing ERTS runtime for use in distroless containers.
 """
 
-load(
-    "//private:erlang_build.bzl",
-    "OtpInfo",
-)
-
 ErtsLayerInfo = provider(
     doc = "Information about an ERTS layer tar file",
     fields = {
@@ -17,7 +12,11 @@ ErtsLayerInfo = provider(
 )
 
 def _erlang_erts_layer_impl(ctx):
-    otp_info = ctx.attr.erlang[OtpInfo]
+    tc = ctx.toolchains["//tools:toolchain_type"]
+    if tc == None:
+        fail("No Erlang toolchain found matching the target platform. " +
+             "Did you register an Erlang toolchain with appropriate target_compatible_with constraints?")
+    otp_info = tc.otpinfo
 
     if otp_info.release_dir_tar == None:
         fail("erlang target must provide a release_dir_tar (external erlang not supported)")
@@ -64,23 +63,19 @@ tar -cf "$ABS_OUTPUT_TAR" lib/erlang
 
 erlang_erts_layer = rule(
     implementation = _erlang_erts_layer_impl,
-    attrs = {
-        "erlang": attr.label(
-            mandatory = True,
-            providers = [OtpInfo],
-            doc = "The Erlang/OTP installation to package (must be erlang_build, not erlang_external)",
-        ),
-    },
+    attrs = {},
+    toolchains = ["//tools:toolchain_type"],
     doc = """Create a tar layer containing ERTS runtime for distroless containers.
 
-This rule takes an Erlang/OTP installation and packages it as a tar layer
-suitable for use in OCI images. The ERTS runtime is installed at /lib/erlang
-in the resulting tar.
+This rule resolves the Erlang/OTP installation via toolchain resolution,
+making it platform-aware. When built under a platform transition, the
+correct architecture's ERTS will be selected automatically.
+
+The ERTS runtime is installed at /lib/erlang in the resulting tar.
 
 Example:
     erlang_erts_layer(
         name = "erts_layer",
-        erlang = "@otp_26",
     )
 
 The output tar can be used directly in oci_image:
