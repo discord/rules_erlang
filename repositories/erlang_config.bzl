@@ -34,7 +34,14 @@ def _format_extra_constraints(constraints):
 def _impl(repository_ctx):
     rules_erlang_workspace = repository_ctx.attr.rules_erlang_workspace
 
-    erlang_installations = _default_erlang_dict(repository_ctx)
+    # Skip host Erlang detection when explicit installations are provided.
+    # The host probe (which erl, version query) produces arch-dependent
+    # results, making the lockfile non-deterministic across architectures.
+    if len(repository_ctx.attr.types) > 0:
+        erlang_installations = {}
+    else:
+        erlang_installations = _default_erlang_dict(repository_ctx)
+
     for name in repository_ctx.attr.types.keys():
         if name == _DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME:
             fail("'{}' is reserved as an erlang name".format(
@@ -252,7 +259,10 @@ constraint_value(
 
 """
 
-    default_installation = erlang_installations[_DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME]
+    if _DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME in erlang_installations:
+        default_installation = erlang_installations[_DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME]
+    else:
+        default_installation = erlang_installations.values()[0]
 
     build_file_content += """\
 constraint_setting(
