@@ -46,7 +46,5 @@ use_repo(
 )
 
 register_toolchains(
-    "@erlang_config//external:toolchain_major",
-    "@erlang_config//external:toolchain_major_minor",
     "@gmake_config//:default_toolchain",
 )
