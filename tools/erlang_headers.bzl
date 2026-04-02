@@ -1,4 +1,5 @@
 load("//:util.bzl", "path_join")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load(
     ":erlang_toolchain.bzl",
     "erlang_dirs",
