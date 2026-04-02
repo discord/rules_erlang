@@ -51,6 +51,9 @@ def _erlang_config(ctx):
     build_triplets = {}
     sysroots = {}
     bootstrap_otps = {}
+    cc_toolchain_filess = {}
+    cc_sysroot_filess = {}
+    cc_configure_envss = {}
     owners_by_name = {}
 
     for mod in ctx.modules:
@@ -94,6 +97,12 @@ def _erlang_config(ctx):
                 sysroots[erlang.name] = erlang.sysroot
             if erlang.bootstrap_otp:
                 bootstrap_otps[erlang.name] = erlang.bootstrap_otp
+            if erlang.cc_toolchain_files:
+                cc_toolchain_filess[erlang.name] = erlang.cc_toolchain_files
+            if erlang.cc_sysroot_files:
+                cc_sysroot_filess[erlang.name] = erlang.cc_sysroot_files
+            if erlang.cc_configure_env:
+                cc_configure_envss[erlang.name] = erlang.cc_configure_env
             owners_by_name[erlang.name] = mod
 
         for erlang in mod.tags.internal_erlang_from_github_release:
@@ -132,6 +141,12 @@ def _erlang_config(ctx):
                 sysroots[erlang.name] = erlang.sysroot
             if erlang.bootstrap_otp:
                 bootstrap_otps[erlang.name] = erlang.bootstrap_otp
+            if erlang.cc_toolchain_files:
+                cc_toolchain_filess[erlang.name] = erlang.cc_toolchain_files
+            if erlang.cc_sysroot_files:
+                cc_sysroot_filess[erlang.name] = erlang.cc_sysroot_files
+            if erlang.cc_configure_env:
+                cc_configure_envss[erlang.name] = erlang.cc_configure_env
             owners_by_name[erlang.name] = mod
 
     _erlang_config_rule(
@@ -153,6 +168,9 @@ def _erlang_config(ctx):
         build_triplets = build_triplets,
         sysroots = sysroots,
         bootstrap_otps = bootstrap_otps,
+        cc_toolchain_filess = cc_toolchain_filess,
+        cc_sysroot_filess = cc_sysroot_filess,
+        cc_configure_envss = cc_configure_envss,
     )
 
 # Documenting for future me, as these tend to be confusing:
@@ -193,6 +211,15 @@ internal_erlang_from_http_archive = tag_class(attrs = {
     "bootstrap_otp": attr.string(
         doc = "Name of another erlang installation to use as bootstrap for cross-compilation.",
     ),
+    "cc_toolchain_files": attr.string(
+        doc = "Label string for CC toolchain files filegroup (e.g., '@llvm_toolchain//:all-files-aarch64-linux').",
+    ),
+    "cc_sysroot_files": attr.string(
+        doc = "Label string for sysroot filegroup (e.g., '@sysroot_linux_aarch64//:sysroot').",
+    ),
+    "cc_configure_env": attr.string_list(
+        doc = "CC env vars as KEY=VALUE strings. {sysroot} placeholder resolved at build time.",
+    ),
 })
 
 internal_erlang_from_github_release = tag_class(attrs = {
@@ -220,6 +247,15 @@ internal_erlang_from_github_release = tag_class(attrs = {
     ),
     "bootstrap_otp": attr.string(
         doc = "Name of another erlang installation to use as bootstrap for cross-compilation.",
+    ),
+    "cc_toolchain_files": attr.string(
+        doc = "Label string for CC toolchain files filegroup (e.g., '@llvm_toolchain//:all-files-aarch64-linux').",
+    ),
+    "cc_sysroot_files": attr.string(
+        doc = "Label string for sysroot filegroup (e.g., '@sysroot_linux_aarch64//:sysroot').",
+    ),
+    "cc_configure_env": attr.string_list(
+        doc = "CC env vars as KEY=VALUE strings. {sysroot} placeholder resolved at build time.",
     ),
 })
 

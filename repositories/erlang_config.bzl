@@ -22,6 +22,16 @@ def _parse_maybe_semver(version_string):
 def _to_string_list(strings):
     return "[%s]" % ",".join(['"%s"' % s.replace('"', '\\"') for s in strings])
 
+def _env_list_to_dict(env_list):
+    """Convert ["KEY=value", ...] to a BUILD file dict literal string."""
+    if not env_list:
+        return "None"
+    entries = []
+    for item in env_list:
+        k, _, v = item.partition("=")
+        entries.append('"%s": "%s"' % (k, v.replace('"', '\\"')))
+    return "{%s}" % ", ".join(entries)
+
 def _format_extra_constraints(constraints):
     """Format a list of constraint labels as indented BUILD file entries.
 
@@ -68,6 +78,9 @@ def _impl(repository_ctx):
             build_triplet = repository_ctx.attr.build_triplets.get(name, ""),
             sysroot = repository_ctx.attr.sysroots.get(name, ""),
             bootstrap_otp = repository_ctx.attr.bootstrap_otps.get(name, ""),
+            cc_toolchain_files = repository_ctx.attr.cc_toolchain_filess.get(name, ""),
+            cc_sysroot_files = repository_ctx.attr.cc_sysroot_filess.get(name, ""),
+            cc_configure_envs = repository_ctx.attr.cc_configure_envss.get(name, []),
         )
 
     for (name, props) in erlang_installations.items():
@@ -132,6 +145,9 @@ def _impl(repository_ctx):
                     "%{BUILD_TRIPLET}": build_triplet,
                     "%{SYSROOT}": sysroot,
                     "%{BOOTSTRAP_OTP}": bootstrap_otp_label,
+                    "%{CC_TOOLCHAIN_FILES}": '"%s"' % props.cc_toolchain_files if props.cc_toolchain_files else "None",
+                    "%{CC_SYSROOT_FILES}": '"%s"' % props.cc_sysroot_files if props.cc_sysroot_files else "None",
+                    "%{CC_CONFIGURE_ENV}": _env_list_to_dict(props.cc_configure_envs),
                 },
                 False,
             )
@@ -184,6 +200,9 @@ erlang_config = repository_rule(
         "build_triplets": attr.string_dict(),
         "sysroots": attr.string_dict(),
         "bootstrap_otps": attr.string_dict(),
+        "cc_toolchain_filess": attr.string_dict(),
+        "cc_sysroot_filess": attr.string_dict(),
+        "cc_configure_envss": attr.string_list_dict(),
     },
     environ = [
         ERLANG_HOME_ENV_VAR,

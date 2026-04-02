@@ -13,6 +13,10 @@ load(
     "QUERY_ERL_VERSION",
     "path_join",
 )
+load(
+    "//private:transitions.bzl",
+    "platform_independent_transition",
+)
 
 OtpInfo = provider(
     doc = "A Home directory of a built Erlang/OTP",
@@ -62,7 +66,7 @@ def _erlang_build_impl(ctx):
 
     is_cross = ctx.attr.host_triplet != ""
 
-    if is_cross and ctx.attr.bootstrap_otp == None:
+    if is_cross and not ctx.attr.bootstrap_otp:
         fail("bootstrap_otp is required when cross-compiling (host_triplet is set)")
 
     # At one point this rule received the erlang sources as a
@@ -92,20 +96,61 @@ curl -L "{archive_url}" -o {archive_path}
     if strip_prefix != "":
         strip_prefix += "\\/"
 
+    # Build the CC toolchain setup commands
+    cc_inputs = []
+    cc_setup = ""
+
+    sysroot_dir = ""
+    if ctx.attr.cc_toolchain_files:
+        cc_inputs.extend(ctx.attr.cc_toolchain_files[DefaultInfo].files.to_list())
+    if ctx.attr.cc_sysroot_files:
+        cc_inputs.extend(ctx.attr.cc_sysroot_files[DefaultInfo].files.to_list())
+        sysroot_dir = ctx.attr.cc_sysroot_files.label.workspace_root
+
+    if ctx.attr.cc_configure_env:
+        exports = []
+        for key, val in ctx.attr.cc_configure_env.items():
+            resolved = val.replace("{sysroot}", "$PWD/" + sysroot_dir if sysroot_dir else "")
+            exports.append('export {}="{}"'.format(key, resolved))
+        cc_setup = "\n".join(exports)
+
     # Build the cross-compilation configure arguments
     xcomp_configure_args = ""
+    xcomp_build_detect = 'XCOMP_BUILD_ARG=""'
     if is_cross:
         xcomp_configure_args = "--host={host}".format(host = ctx.attr.host_triplet)
         if ctx.attr.build_triplet != "":
             xcomp_configure_args += " --build={build}".format(build = ctx.attr.build_triplet)
-        if ctx.attr.sysroot != "":
-            xcomp_configure_args += " erl_xcomp_sysroot={sysroot}".format(sysroot = ctx.attr.sysroot)
+        else:
+            # OTP checks CROSS_COMPILING before autotools' conftest
+            # confirms cross_compiling=yes. Without --build, autotools
+            # sets cross_compiling=maybe (not yes) so OTP treats it as
+            # no — then tries to run target-arch helper binaries on the
+            # host. We auto-detect --build and pass it when the canonical
+            # triplets differ. When they match (same-arch build), OTP
+            # would reject it, but cross-compilation isn't needed anyway.
+            xcomp_build_detect = """\
+_BUILD_GUESS="$(./make/autoconf/config.guess)"
+_BUILD_CANON="$(./make/autoconf/config.sub "$_BUILD_GUESS")"
+_HOST_CANON="$(./make/autoconf/config.sub "{host}")"
+XCOMP_BUILD_ARG=""
+if [ "$_BUILD_CANON" != "$_HOST_CANON" ]; then
+    XCOMP_BUILD_ARG="--build=$_BUILD_GUESS"
+fi\
+""".format(host = ctx.attr.host_triplet)
+        effective_sysroot = ctx.attr.sysroot
+        if effective_sysroot == "" and sysroot_dir != "":
+            effective_sysroot = "$EXECROOT/" + sysroot_dir
+        if effective_sysroot != "":
+            xcomp_configure_args += " erl_xcomp_sysroot={sysroot}".format(sysroot = effective_sysroot)
 
     # Build the bootstrap setup commands
     bootstrap_setup = ""
     bootstrap_inputs = []
-    if ctx.attr.bootstrap_otp != None:
-        bootstrap_info = ctx.attr.bootstrap_otp[OtpInfo]
+    # cfg transitions turn attr.label into a list; unwrap it.
+    bootstrap_otp = ctx.attr.bootstrap_otp[0] if ctx.attr.bootstrap_otp else None
+    if bootstrap_otp != None:
+        bootstrap_info = bootstrap_otp[OtpInfo]
         if bootstrap_info.release_dir_tar == None:
             # External erlang — just put it in PATH
             bootstrap_setup = 'export PATH="{erlang_home}/bin:$PATH"'.format(
@@ -158,7 +203,7 @@ tar --create \\
 """.format(install_path = install_path)
 
     ctx.actions.run_shell(
-        inputs = [downloaded_archive, sha256file] + bootstrap_inputs,
+        inputs = [downloaded_archive, sha256file] + bootstrap_inputs + cc_inputs,
         outputs = [
             build_dir_tar,
             build_log,
@@ -178,11 +223,13 @@ ABS_BUILD_DIR_TAR=$PWD/{build_path}
 ABS_RELEASE_DIR_TAR=$PWD/{release_path}
 ABS_VERSION_FILE=$PWD/{version_file}
 ABS_LOG=$PWD/{build_log}
+EXECROOT=$PWD
 
 ABS_BUILD_DIR="$(mktemp -d)"
 ABS_DEST_DIR="$(mktemp -d)"
 
 {bootstrap_setup}
+{cc_setup}
 
 tar --extract \\
     --no-same-owner \\
@@ -204,8 +251,9 @@ catch() {{
 }}
 
 cd "$ABS_BUILD_DIR"
+{xcomp_build_detect}
 {pre_configure_cmds}
-./configure --prefix={install_path} {xcomp_configure_args} {extra_configure_opts} >> "$ABS_LOG" 2>&1
+./configure --prefix={install_path} {xcomp_configure_args} $XCOMP_BUILD_ARG {extra_configure_opts} >> "$ABS_LOG" 2>&1
 {post_configure_cmds}
 echo "    configure finished"
 ${{MAKE:=make}} {extra_make_opts} >> "$ABS_LOG" 2>&1
@@ -235,6 +283,8 @@ echo "$OTP_REL" > "$ABS_VERSION_FILE"
             begins_with_fun = BEGINS_WITH_FUN,
             erlang_version = ctx.attr.version,
             bootstrap_setup = bootstrap_setup,
+            cc_setup = cc_setup,
+            xcomp_build_detect = xcomp_build_detect,
             xcomp_configure_args = xcomp_configure_args,
             extra_configure_opts = extra_configure_opts,
             pre_configure_cmds = pre_configure_cmds,
@@ -297,7 +347,24 @@ erlang_build = rule(
             doc = "A native OTP build (OtpInfo provider) of the same version, " +
                   "used as the bootstrap system for cross-compilation. " +
                   "Required when host_triplet is set.",
-            providers = [OtpInfo],
+            # NOTE: we can't actually specify a provider here if we want to use
+            # a transition. This means that callers are going to need to be
+            # careful about the label provided to `bootstrap_otp`.
+            # Caveat emptor.
+            cfg = platform_independent_transition,
+        ),
+        "cc_toolchain_files": attr.label(
+            doc = "Filegroup with CC toolchain binaries (clang, lld, llvm-ar, etc.). " +
+                  "Added as inputs to the build action for cross-compilation.",
+        ),
+        "cc_sysroot_files": attr.label(
+            doc = "Filegroup with sysroot files for the target architecture. " +
+                  "Added as inputs; workspace_root is used to derive the sysroot path.",
+        ),
+        "cc_configure_env": attr.string_dict(
+            doc = "Env vars exported before ./configure (CC, CXX, LD, AR, RANLIB, etc.). " +
+                  "Values may contain {sysroot} placeholder, resolved to the " +
+                  "absolute sandbox path of cc_sysroot_files.",
         ),
         "sha256": tools["sha256"],
     },

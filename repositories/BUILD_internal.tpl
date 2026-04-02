@@ -23,6 +23,9 @@ erlang_build(
     build_triplet = "%{BUILD_TRIPLET}",
     sysroot = "%{SYSROOT}",
     bootstrap_otp = %{BOOTSTRAP_OTP},
+    cc_toolchain_files = %{CC_TOOLCHAIN_FILES},
+    cc_sysroot_files = %{CC_SYSROOT_FILES},
+    cc_configure_env = %{CC_CONFIGURE_ENV},
     visibility = ["//visibility:public"],
 )
 
