@@ -64,6 +64,10 @@ def _impl(repository_ctx):
             extra_make_opts = repository_ctx.attr.extra_make_optss.get(name, []),
             extra_target_constraints = repository_ctx.attr.extra_target_constraintss.get(name, []),
             extra_exec_constraints = repository_ctx.attr.extra_exec_constraintss.get(name, []),
+            host_triplet = repository_ctx.attr.host_triplets.get(name, ""),
+            build_triplet = repository_ctx.attr.build_triplets.get(name, ""),
+            sysroot = repository_ctx.attr.sysroots.get(name, ""),
+            bootstrap_otp = repository_ctx.attr.bootstrap_otps.get(name, ""),
         )
 
     for (name, props) in erlang_installations.items():
@@ -91,6 +95,21 @@ def _impl(repository_ctx):
                 False,
             )
         else:
+            host_triplet = getattr(props, "host_triplet", "")
+            build_triplet = getattr(props, "build_triplet", "")
+            sysroot = getattr(props, "sysroot", "")
+            bootstrap_otp = getattr(props, "bootstrap_otp", "")
+
+            # Resolve bootstrap_otp name to a label within this repository
+            bootstrap_otp_label = "None"
+            if bootstrap_otp != "":
+                if bootstrap_otp not in erlang_installations:
+                    fail("bootstrap_otp '{}' for '{}' does not refer to a known erlang installation".format(
+                        bootstrap_otp,
+                        name,
+                    ))
+                bootstrap_otp_label = '"//{}:otp-{}"'.format(bootstrap_otp, bootstrap_otp)
+
             repository_ctx.template(
                 "{}/BUILD.bazel".format(name),
                 Label("//repositories:BUILD_internal.tpl"),
@@ -109,6 +128,10 @@ def _impl(repository_ctx):
                     "%{EXTRA_MAKE_OPTS}": _to_string_list(props.extra_make_opts),
                     "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
                     "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
+                    "%{HOST_TRIPLET}": host_triplet,
+                    "%{BUILD_TRIPLET}": build_triplet,
+                    "%{SYSROOT}": sysroot,
+                    "%{BOOTSTRAP_OTP}": bootstrap_otp_label,
                 },
                 False,
             )
@@ -157,6 +180,10 @@ erlang_config = repository_rule(
         "extra_make_optss": attr.string_list_dict(),
         "extra_target_constraintss": attr.string_list_dict(),
         "extra_exec_constraintss": attr.string_list_dict(),
+        "host_triplets": attr.string_dict(),
+        "build_triplets": attr.string_dict(),
+        "sysroots": attr.string_dict(),
+        "bootstrap_otps": attr.string_dict(),
     },
     environ = [
         ERLANG_HOME_ENV_VAR,

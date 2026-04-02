@@ -2,6 +2,7 @@ load("//:erlang_app_info.bzl", "ErlangAppInfo", "flat_deps")
 load("//:util.bzl", "path_join")
 load(":erlang_bytecode.bzl", "unique_dirnames")
 load(":erlc_opts_file.bzl", "ErlcOptsInfo")
+load(":transitions.bzl", "platform_independent_transition")
 load(":util.bzl", "erl_libs_contents")
 load(
     "//tools:erlang_toolchain.bzl",
@@ -116,6 +117,7 @@ fi
 
 erlang_bytecode = rule(
     implementation = _impl,
+    cfg = platform_independent_transition,
     attrs = {
         "app_name": attr.string(),
         "hdrs": attr.label_list(

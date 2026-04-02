@@ -16,6 +16,10 @@ load(
     "flat_deps",
 )
 load(
+    "//private:transitions.bzl",
+    "platform_independent_transition",
+)
+load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
     "maybe_install_erlang",
@@ -239,6 +243,7 @@ fi""".format(sys_config = sys_config_file.path if sys_config_file else ""),
 
 erlang_release_bundle = rule(
     implementation = _impl,
+    cfg = platform_independent_transition,
     attrs = {
         "release": attr.label(
             mandatory = True,

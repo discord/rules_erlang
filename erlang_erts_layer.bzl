@@ -2,30 +2,34 @@
 Create a tar layer containing ERTS runtime for use in distroless containers.
 """
 
+load(
+    "//private:erlang_build.bzl",
+    "OtpInfo",
+)
+
 ErtsLayerInfo = provider(
     doc = "Information about an ERTS layer tar file",
     fields = {
         "tar": "Tar file containing the ERTS runtime",
-        "erlang_home": "Path where ERTS is installed in the tar (/lib/erlang)",
+        "erlang_home": "Path where ERTS is installed in the tar",
         "erts_version": "ERTS version from OtpInfo",
     },
 )
 
 def _erlang_erts_layer_impl(ctx):
-    tc = ctx.toolchains["//tools:toolchain_type"]
-    if tc == None:
-        fail("No Erlang toolchain found matching the target platform. " +
-             "Did you register an Erlang toolchain with appropriate target_compatible_with constraints?")
-    otp_info = tc.otpinfo
+    otp_info = ctx.attr.otp[OtpInfo]
 
     if otp_info.release_dir_tar == None:
-        fail("erlang target must provide a release_dir_tar (external erlang not supported)")
+        fail("otp target must provide a release_dir_tar (external erlang not supported)")
 
     # Declare output tar file
     output_tar = ctx.actions.declare_file(ctx.label.name + ".tar")
 
-    # Create script to extract and repackage the tar
-    # The input tar contains lib/erlang/, bin/, etc. - we extract just lib/erlang
+    # The release tar already has the flat release layout (bin/, lib/,
+    # erts-X.Y.Z/) at root. We repackage it under a prefix so the
+    # container layer installs ERTS at a known absolute path.
+    install_prefix = "/opt/erlang"
+
     ctx.actions.run_shell(
         inputs = [otp_info.release_dir_tar],
         outputs = [output_tar],
@@ -37,14 +41,14 @@ ABS_OUTPUT_TAR="$PWD/{output_tar}"
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-cd "$WORK_DIR"
-
-tar --no-same-owner -xf "$ABS_INPUT_TAR"
-tar -cf "$ABS_OUTPUT_TAR" lib/erlang
+mkdir -p "$WORK_DIR{install_prefix}"
+tar --no-same-owner -xf "$ABS_INPUT_TAR" -C "$WORK_DIR{install_prefix}"
+tar -cf "$ABS_OUTPUT_TAR" -C "$WORK_DIR" .{install_prefix}
 
 """.format(
             input_tar = otp_info.release_dir_tar.path,
             output_tar = output_tar.path,
+            install_prefix = install_prefix,
         ),
         mnemonic = "ErtsLayer",
         progress_message = "Creating ERTS layer tar for {}".format(ctx.label.name),
@@ -56,33 +60,55 @@ tar -cf "$ABS_OUTPUT_TAR" lib/erlang
         ),
         ErtsLayerInfo(
             tar = output_tar,
-            erlang_home = "/lib/erlang",
+            erlang_home = install_prefix,
             erts_version = otp_info.version,
         ),
     ]
 
 erlang_erts_layer = rule(
     implementation = _erlang_erts_layer_impl,
-    attrs = {},
-    toolchains = ["//tools:toolchain_type"],
+    attrs = {
+        "otp": attr.label(
+            mandatory = True,
+            providers = [OtpInfo],
+            doc = """An erlang_build target providing the OTP release tar.
+
+Use select() to pick the correct architecture:
+    otp = select({
+        "@platforms//cpu:x86_64": "@erlang_config//25_amd64:otp-25_amd64",
+        "@platforms//cpu:aarch64": "@erlang_config//25_arm64:otp-25_arm64",
+    })
+""",
+        ),
+    },
     doc = """Create a tar layer containing ERTS runtime for distroless containers.
 
-This rule resolves the Erlang/OTP installation via toolchain resolution,
-making it platform-aware. When built under a platform transition, the
-correct architecture's ERTS will be selected automatically.
+Takes an erlang_build target directly, bypassing toolchain resolution.
+This allows building ERTS layers for foreign architectures (e.g. arm64
+on an x86_64 host) since the rule only repackages the pre-built release
+tar without executing any arch-specific code.
 
-The ERTS runtime is installed at /lib/erlang in the resulting tar.
+Use select() on @platforms//cpu to pick the correct OTP target per
+architecture. Platform transitions (e.g. from elixir_container_image)
+set --platforms before this rule is analyzed, so select() resolves
+to the correct arch.
+
+The ERTS runtime is installed at /opt/erlang in the resulting tar.
 
 Example:
     erlang_erts_layer(
         name = "erts_layer",
+        otp = select({
+            "@platforms//cpu:x86_64": "@erlang_config//25_amd64:otp-25_amd64",
+            "@platforms//cpu:aarch64": "@erlang_config//25_arm64:otp-25_arm64",
+        }),
     )
 
 The output tar can be used directly in oci_image:
     oci_image(
         name = "my_image",
         tars = [":erts_layer"],
-        env = {"ERLANG_HOME": "/lib/erlang"},
+        env = {"ERLANG_HOME": "/opt/erlang"},
     )
 """,
 )

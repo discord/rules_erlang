@@ -47,6 +47,10 @@ def _erlang_config(ctx):
     extra_make_optss = {}
     extra_target_constraintss = {}
     extra_exec_constraintss = {}
+    host_triplets = {}
+    build_triplets = {}
+    sysroots = {}
+    bootstrap_otps = {}
     owners_by_name = {}
 
     for mod in ctx.modules:
@@ -82,6 +86,14 @@ def _erlang_config(ctx):
             extra_make_optss[erlang.name] = erlang.extra_make_opts
             extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
             extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
+            if erlang.host_triplet:
+                host_triplets[erlang.name] = erlang.host_triplet
+            if erlang.build_triplet:
+                build_triplets[erlang.name] = erlang.build_triplet
+            if erlang.sysroot:
+                sysroots[erlang.name] = erlang.sysroot
+            if erlang.bootstrap_otp:
+                bootstrap_otps[erlang.name] = erlang.bootstrap_otp
             owners_by_name[erlang.name] = mod
 
         for erlang in mod.tags.internal_erlang_from_github_release:
@@ -112,6 +124,14 @@ def _erlang_config(ctx):
             extra_make_optss[erlang.name] = erlang.extra_make_opts
             extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
             extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
+            if erlang.host_triplet:
+                host_triplets[erlang.name] = erlang.host_triplet
+            if erlang.build_triplet:
+                build_triplets[erlang.name] = erlang.build_triplet
+            if erlang.sysroot:
+                sysroots[erlang.name] = erlang.sysroot
+            if erlang.bootstrap_otp:
+                bootstrap_otps[erlang.name] = erlang.bootstrap_otp
             owners_by_name[erlang.name] = mod
 
     _erlang_config_rule(
@@ -129,6 +149,10 @@ def _erlang_config(ctx):
         extra_make_optss = extra_make_optss,
         extra_target_constraintss = extra_target_constraintss,
         extra_exec_constraintss = extra_exec_constraintss,
+        host_triplets = host_triplets,
+        build_triplets = build_triplets,
+        sysroots = sysroots,
+        bootstrap_otps = bootstrap_otps,
     )
 
 # Documenting for future me, as these tend to be confusing:
@@ -157,6 +181,18 @@ internal_erlang_from_http_archive = tag_class(attrs = {
     "extra_make_opts": attr.string_list(),
     "target_compatible_with": attr.label_list(),
     "exec_compatible_with": attr.label_list(),
+    "host_triplet": attr.string(
+        doc = "Target system triplet for cross-compilation (e.g., aarch64-linux-gnu).",
+    ),
+    "build_triplet": attr.string(
+        doc = "Build system triplet (e.g., x86_64-linux-gnu). Auto-detected if empty.",
+    ),
+    "sysroot": attr.string(
+        doc = "Absolute path to target system root for cross-compilation.",
+    ),
+    "bootstrap_otp": attr.string(
+        doc = "Name of another erlang installation to use as bootstrap for cross-compilation.",
+    ),
 })
 
 internal_erlang_from_github_release = tag_class(attrs = {
@@ -173,6 +209,18 @@ internal_erlang_from_github_release = tag_class(attrs = {
     "extra_make_opts": attr.string_list(),
     "target_compatible_with": attr.label_list(),
     "exec_compatible_with": attr.label_list(),
+    "host_triplet": attr.string(
+        doc = "Target system triplet for cross-compilation (e.g., aarch64-linux-gnu).",
+    ),
+    "build_triplet": attr.string(
+        doc = "Build system triplet (e.g., x86_64-linux-gnu). Auto-detected if empty.",
+    ),
+    "sysroot": attr.string(
+        doc = "Absolute path to target system root for cross-compilation.",
+    ),
+    "bootstrap_otp": attr.string(
+        doc = "Name of another erlang installation to use as bootstrap for cross-compilation.",
+    ),
 })
 
 erlang_config = module_extension(

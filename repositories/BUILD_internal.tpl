@@ -19,6 +19,10 @@ erlang_build(
     extra_configure_opts = %{EXTRA_CONFIGURE_OPTS},
     post_configure_cmds = %{POST_CONFIGURE_CMDS},
     extra_make_opts = %{EXTRA_MAKE_OPTS},
+    host_triplet = "%{HOST_TRIPLET}",
+    build_triplet = "%{BUILD_TRIPLET}",
+    sysroot = "%{SYSROOT}",
+    bootstrap_otp = %{BOOTSTRAP_OTP},
     visibility = ["//visibility:public"],
 )
 
