@@ -6,7 +6,6 @@ load(
     "maybe_install_erlang",
 )
 
-load("//private:transitions.bzl", "platform_independent_transition")
 
 DEFAULT_FILENAMES = [
     "driver_int.h",
@@ -62,7 +61,8 @@ def _erlang_headers_impl(ctx):
 
 erlang_headers = rule(
     implementation = _erlang_headers_impl,
-    cfg = platform_independent_transition,
+    # No transition — C headers (erl_nif.h, erl_driver.h, etc.) contain
+    # sizeof/alignment defines that are architecture-specific.
     attrs = {
         "filenames": attr.string_list(
             default = DEFAULT_FILENAMES,
