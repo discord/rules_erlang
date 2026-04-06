@@ -9,6 +9,11 @@ bazel_dep(
     version = "1.7.1",
 )
 
+bazel_dep(
+    name = "rules_cc",
+    version = "0.2.17"
+)
+
 erlang_package = use_extension(
     "//bzlmod:extensions.bzl",
     "erlang_package",
@@ -46,7 +51,5 @@ use_repo(
 )
 
 register_toolchains(
-    "@erlang_config//external:toolchain_major",
-    "@erlang_config//external:toolchain_major_minor",
     "@gmake_config//:default_toolchain",
 )

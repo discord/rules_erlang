@@ -1,6 +1,10 @@
 load("@bazel_skylib//lib:shell.bzl", "shell")
 load("//:erlang_app_info.bzl", "ErlangAppInfo")
 load(
+    "//private:transitions.bzl",
+    "platform_independent_transition",
+)
+load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
     "maybe_install_erlang",
@@ -275,6 +279,7 @@ fi
 
 app_file = rule(
     implementation = _impl,
+    cfg = platform_independent_transition,
     attrs = {
         "app_file_tool": attr.label(
             mandatory = True,

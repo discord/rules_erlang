@@ -13,6 +13,10 @@ load(
     "QUERY_ERL_VERSION",
     "path_join",
 )
+load(
+    "//private:transitions.bzl",
+    "platform_independent_transition",
+)
 
 OtpInfo = provider(
     doc = "A Home directory of a built Erlang/OTP",
@@ -60,7 +64,12 @@ def _erlang_build_impl(ctx):
     install_path = path_join(ctx.attr.install_prefix, ctx.label.name)
     install_root = _install_root(ctx.attr.install_prefix)
 
-    # At one point this rule recevied the erlang sources as a
+    is_cross = ctx.attr.host_triplet != ""
+
+    if is_cross and not ctx.attr.bootstrap_otp:
+        fail("bootstrap_otp is required when cross-compiling (host_triplet is set)")
+
+    # At one point this rule received the erlang sources as a
     # label_list attribute, which had been fetched with a repository
     # rule. This had the unfortunate side effect of stripping out
     # empty directories which are expected to be present by the
@@ -83,18 +92,123 @@ curl -L "{archive_url}" -o {archive_path}
 
     sha256file = sha256(ctx, downloaded_archive)
 
-    # zipper = ctx.executable._zipper
-
     strip_prefix = ctx.attr.strip_prefix
     if strip_prefix != "":
         strip_prefix += "\\/"
 
+    # Build the CC toolchain setup commands
+    cc_inputs = []
+    cc_setup = ""
+
+    sysroot_dir = ""
+    if ctx.attr.cc_toolchain_files:
+        cc_inputs.extend(ctx.attr.cc_toolchain_files[DefaultInfo].files.to_list())
+    if ctx.attr.cc_sysroot_files:
+        cc_inputs.extend(ctx.attr.cc_sysroot_files[DefaultInfo].files.to_list())
+        sysroot_dir = ctx.attr.cc_sysroot_files.label.workspace_root
+
+    if ctx.attr.cc_configure_env:
+        exports = []
+        for key, val in ctx.attr.cc_configure_env.items():
+            resolved = val.replace("{sysroot}", "$PWD/" + sysroot_dir if sysroot_dir else "")
+            exports.append('export {}="{}"'.format(key, resolved))
+        cc_setup = "\n".join(exports)
+
+    # Build the cross-compilation configure arguments
+    xcomp_configure_args = ""
+    xcomp_build_detect = 'XCOMP_BUILD_ARG=""'
+    if is_cross:
+        xcomp_configure_args = "--host={host}".format(host = ctx.attr.host_triplet)
+        if ctx.attr.build_triplet != "":
+            xcomp_configure_args += " --build={build}".format(build = ctx.attr.build_triplet)
+        else:
+            # OTP checks CROSS_COMPILING before autotools' conftest
+            # confirms cross_compiling=yes. Without --build, autotools
+            # sets cross_compiling=maybe (not yes) so OTP treats it as
+            # no — then tries to run target-arch helper binaries on the
+            # host. We auto-detect --build and pass it when the canonical
+            # triplets differ. When they match (same-arch build), OTP
+            # would reject it, but cross-compilation isn't needed anyway.
+            xcomp_build_detect = """\
+_BUILD_GUESS="$(./make/autoconf/config.guess)"
+_BUILD_CANON="$(./make/autoconf/config.sub "$_BUILD_GUESS")"
+_HOST_CANON="$(./make/autoconf/config.sub "{host}")"
+XCOMP_BUILD_ARG=""
+if [ "$_BUILD_CANON" != "$_HOST_CANON" ]; then
+    XCOMP_BUILD_ARG="--build=$_BUILD_GUESS"
+fi\
+""".format(host = ctx.attr.host_triplet)
+        effective_sysroot = ctx.attr.sysroot
+        if effective_sysroot == "" and sysroot_dir != "":
+            effective_sysroot = "$EXECROOT/" + sysroot_dir
+        if effective_sysroot != "":
+            xcomp_configure_args += " erl_xcomp_sysroot={sysroot}".format(sysroot = effective_sysroot)
+
+    # Build the bootstrap setup commands
+    bootstrap_setup = ""
+    bootstrap_inputs = []
+    # cfg transitions turn attr.label into a list; unwrap it.
+    bootstrap_otp = ctx.attr.bootstrap_otp[0] if ctx.attr.bootstrap_otp else None
+    if bootstrap_otp != None:
+        bootstrap_info = bootstrap_otp[OtpInfo]
+        if bootstrap_info.release_dir_tar == None:
+            # External erlang — just put it in PATH
+            bootstrap_setup = 'export PATH="{erlang_home}/bin:$PATH"'.format(
+                erlang_home = bootstrap_info.erlang_home,
+            )
+        else:
+            bootstrap_inputs = [bootstrap_info.release_dir_tar]
+            bootstrap_setup = """\
+BOOTSTRAP_DIR="$(mktemp -d)"
+tar --extract --no-same-owner \\
+    --directory "$BOOTSTRAP_DIR" \\
+    --file "{bootstrap_tar}"
+export PATH="$BOOTSTRAP_DIR/bin:$PATH"\
+""".format(bootstrap_tar = bootstrap_info.release_dir_tar.path)
+
+    # Always use `make release` for a consistent flat directory layout
+    # (bin/, lib/, erts-X.Y.Z/ at root) regardless of whether we're
+    # cross-compiling. The alternative (`make install`) nests everything
+    # under lib/erlang/ which requires different erlang_home handling
+    # and complicates erlang_headers.bzl and erlang_erts_layer.bzl.
+    if is_cross:
+        install_cmds = """\
+${{MAKE}} release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
+echo "    make release finished"
+
+cd "$ABS_DEST_DIR"
+./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
+echo "    Install script finished"
+
+tar --create \\
+    --file "$ABS_RELEASE_DIR_TAR" \\
+    *\
+""".format(install_path = install_path)
+    else:
+        # We pass -cross even for native builds because the Install script
+        # checks that ERL_ROOT is an existing directory. With -cross, it
+        # sets ERL_ROOT to $PWD (the release dir) and uses the argument
+        # only as the target path baked into boot scripts.
+        install_cmds = """\
+${{MAKE}} release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
+echo "    make release finished"
+
+cd "$ABS_DEST_DIR"
+./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
+echo "    Install script finished"
+
+tar --create \\
+    --file "$ABS_RELEASE_DIR_TAR" \\
+    *\
+""".format(install_path = install_path)
+
     ctx.actions.run_shell(
-        inputs = [downloaded_archive, sha256file],
+        inputs = [downloaded_archive, sha256file] + bootstrap_inputs + cc_inputs,
         outputs = [
             build_dir_tar,
             build_log,
             release_dir_tar,
+            version_file,
         ],
         command = """set -euo pipefail
 
@@ -107,10 +221,15 @@ fi
 
 ABS_BUILD_DIR_TAR=$PWD/{build_path}
 ABS_RELEASE_DIR_TAR=$PWD/{release_path}
+ABS_VERSION_FILE=$PWD/{version_file}
 ABS_LOG=$PWD/{build_log}
+EXECROOT=$PWD
 
 ABS_BUILD_DIR="$(mktemp -d)"
 ABS_DEST_DIR="$(mktemp -d)"
+
+{bootstrap_setup}
+{cc_setup}
 
 tar --extract \\
     --no-same-owner \\
@@ -132,19 +251,24 @@ catch() {{
 }}
 
 cd "$ABS_BUILD_DIR"
+{xcomp_build_detect}
 {pre_configure_cmds}
-./configure --prefix={install_path} {extra_configure_opts} >> "$ABS_LOG" 2>&1
+./configure --prefix={install_path} {xcomp_configure_args} $XCOMP_BUILD_ARG {extra_configure_opts} >> "$ABS_LOG" 2>&1
 {post_configure_cmds}
 echo "    configure finished"
 ${{MAKE:=make}} {extra_make_opts} >> "$ABS_LOG" 2>&1
 echo "    make finished"
-${{MAKE}} install DESTDIR="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
-echo "    make install finished"
 
-cd "$ABS_DEST_DIR"/{install_path}
-tar --create \\
-    --file "$ABS_RELEASE_DIR_TAR" \\
-    *
+{install_cmds}
+
+# Validate version from source tree (works for both native and cross builds)
+{begins_with_fun}
+OTP_REL=$(tr -d '[:space:]' < "$ABS_BUILD_DIR/OTP_VERSION")
+if ! beginswith "{erlang_version}" "$OTP_REL"; then
+    echo "Erlang version mismatch (Expected {erlang_version}, found $OTP_REL)"
+    exit 1
+fi
+echo "$OTP_REL" > "$ABS_VERSION_FILE"
 """.format(
             sha256 = ctx.attr.sha256v,
             sha256file = sha256file.path,
@@ -152,52 +276,30 @@ tar --create \\
             strip_prefix = strip_prefix,
             build_path = build_dir_tar.path,
             release_path = release_dir_tar.path,
+            version_file = version_file.path,
             install_path = install_path,
             install_root = install_root,
             build_log = build_log.path,
+            begins_with_fun = BEGINS_WITH_FUN,
+            erlang_version = ctx.attr.version,
+            bootstrap_setup = bootstrap_setup,
+            cc_setup = cc_setup,
+            xcomp_build_detect = xcomp_build_detect,
+            xcomp_configure_args = xcomp_configure_args,
             extra_configure_opts = extra_configure_opts,
             pre_configure_cmds = pre_configure_cmds,
             post_configure_cmds = post_configure_cmds,
             extra_make_opts = extra_make_opts,
+            install_cmds = install_cmds,
         ),
         use_default_shell_env = True,
         mnemonic = "OTP",
-        progress_message = "Compiling otp from source",
-    )
-
-    erlang_home = path_join(install_path, "lib", "erlang")
-
-    ctx.actions.run_shell(
-        inputs = [release_dir_tar],
-        outputs = [version_file],
-        command = """set -euo pipefail
-
-mkdir -p "{install_path}"
-tar --extract \\
-    --no-same-owner \\
-    --directory "{install_path}" \\
-    --file {erlang_release_tar}
-
-{begins_with_fun}
-V=$("{erlang_home}"/bin/{query_erlang_version})
-if ! beginswith "{erlang_version}" "$V"; then
-echo "Erlang version mismatch (Expected {erlang_version}, found $V)"
-exit 1
-fi
-
-echo "$V" >> {version_file}
-""".format(
-            install_path = install_path,
-            begins_with_fun = BEGINS_WITH_FUN,
-            query_erlang_version = QUERY_ERL_VERSION,
-            erlang_version = ctx.attr.version,
-            erlang_home = erlang_home,
-            erlang_release_tar = release_dir_tar.path,
-            version_file = version_file.path,
+        progress_message = "Compiling otp{} from source".format(
+            " (cross: {})".format(ctx.attr.host_triplet) if is_cross else "",
         ),
-        mnemonic = "OTP",
-        progress_message = "Validating otp at {}".format(erlang_home),
     )
+
+    erlang_home = install_path
 
     return [
         DefaultInfo(
@@ -217,6 +319,7 @@ echo "$V" >> {version_file}
 
 erlang_build = rule(
     implementation = _erlang_build_impl,
+    cfg = platform_independent_transition,
     attrs = {
         "version": attr.string(mandatory = True),
         "url": attr.string(mandatory = True),
@@ -227,6 +330,42 @@ erlang_build = rule(
         "extra_configure_opts": attr.string_list(),
         "post_configure_cmds": attr.string_list(),
         "extra_make_opts": attr.string_list(),
+        "host_triplet": attr.string(
+            doc = "Target system triplet for cross-compilation (e.g., aarch64-linux-gnu). " +
+                  "Passed as --host to configure. When set, triggers cross-compilation mode.",
+        ),
+        "build_triplet": attr.string(
+            doc = "Build system triplet (e.g., x86_64-linux-gnu). " +
+                  "Passed as --build to configure. If empty, auto-detected by config.guess.",
+        ),
+        "sysroot": attr.string(
+            doc = "Absolute path to the target system root. " +
+                  "Sets erl_xcomp_sysroot for configure. " +
+                  "Required for crypto/ssl/ssh when cross-compiling.",
+        ),
+        "bootstrap_otp": attr.label(
+            doc = "A native OTP build (OtpInfo provider) of the same version, " +
+                  "used as the bootstrap system for cross-compilation. " +
+                  "Required when host_triplet is set.",
+            # NOTE: we can't actually specify a provider here if we want to use
+            # a transition. This means that callers are going to need to be
+            # careful about the label provided to `bootstrap_otp`.
+            # Caveat emptor.
+            cfg = platform_independent_transition,
+        ),
+        "cc_toolchain_files": attr.label(
+            doc = "Filegroup with CC toolchain binaries (clang, lld, llvm-ar, etc.). " +
+                  "Added as inputs to the build action for cross-compilation.",
+        ),
+        "cc_sysroot_files": attr.label(
+            doc = "Filegroup with sysroot files for the target architecture. " +
+                  "Added as inputs; workspace_root is used to derive the sysroot path.",
+        ),
+        "cc_configure_env": attr.string_dict(
+            doc = "Env vars exported before ./configure (CC, CXX, LD, AR, RANLIB, etc.). " +
+                  "Values may contain {sysroot} placeholder, resolved to the " +
+                  "absolute sandbox path of cc_sysroot_files.",
+        ),
         "sha256": tools["sha256"],
     },
 )

@@ -22,10 +22,36 @@ def _parse_maybe_semver(version_string):
 def _to_string_list(strings):
     return "[%s]" % ",".join(['"%s"' % s.replace('"', '\\"') for s in strings])
 
+def _env_list_to_dict(env_list):
+    """Convert ["KEY=value", ...] to a BUILD file dict literal string."""
+    if not env_list:
+        return "None"
+    entries = []
+    for item in env_list:
+        k, _, v = item.partition("=")
+        entries.append('"%s": "%s"' % (k, v.replace('"', '\\"')))
+    return "{%s}" % ", ".join(entries)
+
+def _format_extra_constraints(constraints):
+    """Format a list of constraint labels as indented BUILD file entries.
+
+    Returns an empty string when no constraints are provided (backwards compatible).
+    """
+    if not constraints:
+        return ""
+    return "".join(['        "%s",\n' % c for c in constraints])
+
 def _impl(repository_ctx):
     rules_erlang_workspace = repository_ctx.attr.rules_erlang_workspace
 
-    erlang_installations = _default_erlang_dict(repository_ctx)
+    # Skip host Erlang detection when explicit installations are provided.
+    # The host probe (which erl, version query) produces arch-dependent
+    # results, making the lockfile non-deterministic across architectures.
+    if len(repository_ctx.attr.types) > 0:
+        erlang_installations = {}
+    else:
+        erlang_installations = _default_erlang_dict(repository_ctx)
+
     for name in repository_ctx.attr.types.keys():
         if name == _DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME:
             fail("'{}' is reserved as an erlang name".format(
@@ -46,9 +72,25 @@ def _impl(repository_ctx):
             extra_configure_opts = repository_ctx.attr.extra_configure_optss.get(name, []),
             post_configure_cmds = repository_ctx.attr.post_configure_cmdss.get(name, []),
             extra_make_opts = repository_ctx.attr.extra_make_optss.get(name, []),
+            extra_target_constraints = repository_ctx.attr.extra_target_constraintss.get(name, []),
+            extra_exec_constraints = repository_ctx.attr.extra_exec_constraintss.get(name, []),
+            host_triplet = repository_ctx.attr.host_triplets.get(name, ""),
+            build_triplet = repository_ctx.attr.build_triplets.get(name, ""),
+            sysroot = repository_ctx.attr.sysroots.get(name, ""),
+            bootstrap_otp = repository_ctx.attr.bootstrap_otps.get(name, ""),
+            cc_toolchain_files = repository_ctx.attr.cc_toolchain_filess.get(name, ""),
+            cc_sysroot_files = repository_ctx.attr.cc_sysroot_filess.get(name, ""),
+            cc_configure_envs = repository_ctx.attr.cc_configure_envss.get(name, []),
         )
 
     for (name, props) in erlang_installations.items():
+        extra_target_constraints = _format_extra_constraints(
+            getattr(props, "extra_target_constraints", []),
+        )
+        extra_exec_constraints = _format_extra_constraints(
+            getattr(props, "extra_exec_constraints", []),
+        )
+
         if props.type == INSTALLATION_TYPE_EXTERNAL:
             repository_ctx.template(
                 "{}/BUILD.bazel".format(name),
@@ -60,10 +102,27 @@ def _impl(repository_ctx):
                     "%{ERLANG_MAJOR}": props.major,
                     "%{ERLANG_MINOR}": props.minor,
                     "%{RULES_ERLANG_WORKSPACE}": rules_erlang_workspace,
+                    "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
+                    "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
                 },
                 False,
             )
         else:
+            host_triplet = getattr(props, "host_triplet", "")
+            build_triplet = getattr(props, "build_triplet", "")
+            sysroot = getattr(props, "sysroot", "")
+            bootstrap_otp = getattr(props, "bootstrap_otp", "")
+
+            # Resolve bootstrap_otp name to a label within this repository
+            bootstrap_otp_label = "None"
+            if bootstrap_otp != "":
+                if bootstrap_otp not in erlang_installations:
+                    fail("bootstrap_otp '{}' for '{}' does not refer to a known erlang installation".format(
+                        bootstrap_otp,
+                        name,
+                    ))
+                bootstrap_otp_label = '"//{}:otp-{}"'.format(bootstrap_otp, bootstrap_otp)
+
             repository_ctx.template(
                 "{}/BUILD.bazel".format(name),
                 Label("//repositories:BUILD_internal.tpl"),
@@ -80,6 +139,15 @@ def _impl(repository_ctx):
                     "%{EXTRA_CONFIGURE_OPTS}": _to_string_list(props.extra_configure_opts),
                     "%{POST_CONFIGURE_CMDS}": _to_string_list(props.post_configure_cmds),
                     "%{EXTRA_MAKE_OPTS}": _to_string_list(props.extra_make_opts),
+                    "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
+                    "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
+                    "%{HOST_TRIPLET}": host_triplet,
+                    "%{BUILD_TRIPLET}": build_triplet,
+                    "%{SYSROOT}": sysroot,
+                    "%{BOOTSTRAP_OTP}": bootstrap_otp_label,
+                    "%{CC_TOOLCHAIN_FILES}": '"%s"' % props.cc_toolchain_files if props.cc_toolchain_files else "None",
+                    "%{CC_SYSROOT_FILES}": '"%s"' % props.cc_sysroot_files if props.cc_sysroot_files else "None",
+                    "%{CC_CONFIGURE_ENV}": _env_list_to_dict(props.cc_configure_envs),
                 },
                 False,
             )
@@ -126,6 +194,15 @@ erlang_config = repository_rule(
         "extra_configure_optss": attr.string_list_dict(),
         "post_configure_cmdss": attr.string_list_dict(),
         "extra_make_optss": attr.string_list_dict(),
+        "extra_target_constraintss": attr.string_list_dict(),
+        "extra_exec_constraintss": attr.string_list_dict(),
+        "host_triplets": attr.string_dict(),
+        "build_triplets": attr.string_dict(),
+        "sysroots": attr.string_dict(),
+        "bootstrap_otps": attr.string_dict(),
+        "cc_toolchain_filess": attr.string_dict(),
+        "cc_sysroot_filess": attr.string_dict(),
+        "cc_configure_envss": attr.string_list_dict(),
     },
     environ = [
         ERLANG_HOME_ENV_VAR,
@@ -228,7 +305,10 @@ constraint_value(
 
 """
 
-    default_installation = erlang_installations[_DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME]
+    if _DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME in erlang_installations:
+        default_installation = erlang_installations[_DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME]
+    else:
+        default_installation = erlang_installations.values()[0]
 
     build_file_content += """\
 constraint_setting(

@@ -1,5 +1,6 @@
 load("//:erlang_app_info.bzl", "ErlangAppInfo")
 load("//:util.bzl", "path_join")
+load(":transitions.bzl", "platform_independent_transition")
 load(":util.bzl", "erl_libs_contents")
 load(
     "//tools:erlang_toolchain.bzl",
@@ -146,6 +147,7 @@ fi
 
 erlang_bytecode = rule(
     implementation = _impl,
+    cfg = platform_independent_transition,
     attrs = {
         "compile_first": attr.label(
             executable = True,

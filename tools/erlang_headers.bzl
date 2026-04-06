@@ -1,9 +1,11 @@
 load("//:util.bzl", "path_join")
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load(
     ":erlang_toolchain.bzl",
     "erlang_dirs",
     "maybe_install_erlang",
 )
+
 
 DEFAULT_FILENAMES = [
     "driver_int.h",
@@ -59,6 +61,8 @@ def _erlang_headers_impl(ctx):
 
 erlang_headers = rule(
     implementation = _erlang_headers_impl,
+    # No transition — C headers (erl_nif.h, erl_driver.h, etc.) contain
+    # sizeof/alignment defines that are architecture-specific.
     attrs = {
         "filenames": attr.string_list(
             default = DEFAULT_FILENAMES,

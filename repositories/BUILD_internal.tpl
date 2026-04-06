@@ -19,6 +19,13 @@ erlang_build(
     extra_configure_opts = %{EXTRA_CONFIGURE_OPTS},
     post_configure_cmds = %{POST_CONFIGURE_CMDS},
     extra_make_opts = %{EXTRA_MAKE_OPTS},
+    host_triplet = "%{HOST_TRIPLET}",
+    build_triplet = "%{BUILD_TRIPLET}",
+    sysroot = "%{SYSROOT}",
+    bootstrap_otp = %{BOOTSTRAP_OTP},
+    cc_toolchain_files = %{CC_TOOLCHAIN_FILES},
+    cc_sysroot_files = %{CC_SYSROOT_FILES},
+    cc_configure_env = %{CC_CONFIGURE_ENV},
     visibility = ["//visibility:public"],
 )
 
@@ -32,10 +39,10 @@ toolchain(
     name = "toolchain_major",
     exec_compatible_with = [
         "//:erlang_internal",
-    ],
+%{EXTRA_EXEC_CONSTRAINTS}    ],
     target_compatible_with = [
         "//:erlang_%{ERLANG_MAJOR}",
-    ],
+%{EXTRA_TARGET_CONSTRAINTS}    ],
     toolchain = ":erlang_%{ERLANG_MAJOR}_%{ERLANG_MINOR}_toolchain",
     toolchain_type = "%{RULES_ERLANG_WORKSPACE}//tools:toolchain_type",
     visibility = ["//visibility:public"],
@@ -51,10 +58,10 @@ toolchain(
     name = "toolchain_major_minor",
     exec_compatible_with = [
         "//:erlang_internal",
-    ],
+%{EXTRA_EXEC_CONSTRAINTS}    ],
     target_compatible_with = [
         "//:erlang_%{ERLANG_MAJOR}_%{ERLANG_MINOR}",
-    ],
+%{EXTRA_TARGET_CONSTRAINTS}    ],
     toolchain = ":erlang_%{ERLANG_MAJOR}_%{ERLANG_MINOR}_toolchain",
     toolchain_type = "%{RULES_ERLANG_WORKSPACE}//tools:toolchain_type",
     visibility = ["//visibility:public"],

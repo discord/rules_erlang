@@ -45,6 +45,15 @@ def _erlang_config(ctx):
     extra_configure_optss = {}
     post_configure_cmdss = {}
     extra_make_optss = {}
+    extra_target_constraintss = {}
+    extra_exec_constraintss = {}
+    host_triplets = {}
+    build_triplets = {}
+    sysroots = {}
+    bootstrap_otps = {}
+    cc_toolchain_filess = {}
+    cc_sysroot_filess = {}
+    cc_configure_envss = {}
     owners_by_name = {}
 
     for mod in ctx.modules:
@@ -58,6 +67,8 @@ def _erlang_config(ctx):
             types[erlang.name] = INSTALLATION_TYPE_EXTERNAL
             versions[erlang.name] = erlang.version
             erlang_homes[erlang.name] = erlang.erlang_home
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
             owners_by_name[erlang.name] = mod
 
         for erlang in mod.tags.internal_erlang_from_http_archive:
@@ -76,6 +87,22 @@ def _erlang_config(ctx):
             extra_configure_optss[erlang.name] = erlang.extra_configure_opts
             post_configure_cmdss[erlang.name] = erlang.post_configure_cmds
             extra_make_optss[erlang.name] = erlang.extra_make_opts
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
+            if erlang.host_triplet:
+                host_triplets[erlang.name] = erlang.host_triplet
+            if erlang.build_triplet:
+                build_triplets[erlang.name] = erlang.build_triplet
+            if erlang.sysroot:
+                sysroots[erlang.name] = erlang.sysroot
+            if erlang.bootstrap_otp:
+                bootstrap_otps[erlang.name] = erlang.bootstrap_otp
+            if erlang.cc_toolchain_files:
+                cc_toolchain_filess[erlang.name] = erlang.cc_toolchain_files
+            if erlang.cc_sysroot_files:
+                cc_sysroot_filess[erlang.name] = erlang.cc_sysroot_files
+            if erlang.cc_configure_env:
+                cc_configure_envss[erlang.name] = erlang.cc_configure_env
             owners_by_name[erlang.name] = mod
 
         for erlang in mod.tags.internal_erlang_from_github_release:
@@ -104,6 +131,22 @@ def _erlang_config(ctx):
             extra_configure_optss[erlang.name] = erlang.extra_configure_opts
             post_configure_cmdss[erlang.name] = erlang.post_configure_cmds
             extra_make_optss[erlang.name] = erlang.extra_make_opts
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
+            if erlang.host_triplet:
+                host_triplets[erlang.name] = erlang.host_triplet
+            if erlang.build_triplet:
+                build_triplets[erlang.name] = erlang.build_triplet
+            if erlang.sysroot:
+                sysroots[erlang.name] = erlang.sysroot
+            if erlang.bootstrap_otp:
+                bootstrap_otps[erlang.name] = erlang.bootstrap_otp
+            if erlang.cc_toolchain_files:
+                cc_toolchain_filess[erlang.name] = erlang.cc_toolchain_files
+            if erlang.cc_sysroot_files:
+                cc_sysroot_filess[erlang.name] = erlang.cc_sysroot_files
+            if erlang.cc_configure_env:
+                cc_configure_envss[erlang.name] = erlang.cc_configure_env
             owners_by_name[erlang.name] = mod
 
     _erlang_config_rule(
@@ -119,12 +162,29 @@ def _erlang_config(ctx):
         extra_configure_optss = extra_configure_optss,
         post_configure_cmdss = post_configure_cmdss,
         extra_make_optss = extra_make_optss,
+        extra_target_constraintss = extra_target_constraintss,
+        extra_exec_constraintss = extra_exec_constraintss,
+        host_triplets = host_triplets,
+        build_triplets = build_triplets,
+        sysroots = sysroots,
+        bootstrap_otps = bootstrap_otps,
+        cc_toolchain_filess = cc_toolchain_filess,
+        cc_sysroot_filess = cc_sysroot_filess,
+        cc_configure_envss = cc_configure_envss,
     )
+
+# Documenting for future me, as these tend to be confusing:
+#  - target_compatible_with: the _outputs_ of this toolchain can be used for
+#    these execution platforms
+#  - exec_compatible_with: this toolchain can only _run_ on these execution
+#    platforms
 
 external_erlang_from_path = tag_class(attrs = {
     "name": attr.string(),
     "version": attr.string(),
     "erlang_home": attr.string(),
+    "target_compatible_with": attr.label_list(),
+    "exec_compatible_with": attr.label_list(),
 })
 
 internal_erlang_from_http_archive = tag_class(attrs = {
@@ -137,6 +197,29 @@ internal_erlang_from_http_archive = tag_class(attrs = {
     "extra_configure_opts": attr.string_list(),
     "post_configure_cmds": attr.string_list(),
     "extra_make_opts": attr.string_list(),
+    "target_compatible_with": attr.label_list(),
+    "exec_compatible_with": attr.label_list(),
+    "host_triplet": attr.string(
+        doc = "Target system triplet for cross-compilation (e.g., aarch64-linux-gnu).",
+    ),
+    "build_triplet": attr.string(
+        doc = "Build system triplet (e.g., x86_64-linux-gnu). Auto-detected if empty.",
+    ),
+    "sysroot": attr.string(
+        doc = "Absolute path to target system root for cross-compilation.",
+    ),
+    "bootstrap_otp": attr.string(
+        doc = "Name of another erlang installation to use as bootstrap for cross-compilation.",
+    ),
+    "cc_toolchain_files": attr.string(
+        doc = "Label string for CC toolchain files filegroup (e.g., '@llvm_toolchain//:all-files-aarch64-linux').",
+    ),
+    "cc_sysroot_files": attr.string(
+        doc = "Label string for sysroot filegroup (e.g., '@sysroot_linux_aarch64//:sysroot').",
+    ),
+    "cc_configure_env": attr.string_list(
+        doc = "CC env vars as KEY=VALUE strings. {sysroot} placeholder resolved at build time.",
+    ),
 })
 
 internal_erlang_from_github_release = tag_class(attrs = {
@@ -151,6 +234,29 @@ internal_erlang_from_github_release = tag_class(attrs = {
     "extra_configure_opts": attr.string_list(),
     "post_configure_cmds": attr.string_list(),
     "extra_make_opts": attr.string_list(),
+    "target_compatible_with": attr.label_list(),
+    "exec_compatible_with": attr.label_list(),
+    "host_triplet": attr.string(
+        doc = "Target system triplet for cross-compilation (e.g., aarch64-linux-gnu).",
+    ),
+    "build_triplet": attr.string(
+        doc = "Build system triplet (e.g., x86_64-linux-gnu). Auto-detected if empty.",
+    ),
+    "sysroot": attr.string(
+        doc = "Absolute path to target system root for cross-compilation.",
+    ),
+    "bootstrap_otp": attr.string(
+        doc = "Name of another erlang installation to use as bootstrap for cross-compilation.",
+    ),
+    "cc_toolchain_files": attr.string(
+        doc = "Label string for CC toolchain files filegroup (e.g., '@llvm_toolchain//:all-files-aarch64-linux').",
+    ),
+    "cc_sysroot_files": attr.string(
+        doc = "Label string for sysroot filegroup (e.g., '@sysroot_linux_aarch64//:sysroot').",
+    ),
+    "cc_configure_env": attr.string_list(
+        doc = "CC env vars as KEY=VALUE strings. {sysroot} placeholder resolved at build time.",
+    ),
 })
 
 erlang_config = module_extension(
