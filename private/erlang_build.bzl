@@ -50,9 +50,11 @@ def _erlang_build_impl(ctx):
 
     build_dir_tar = ctx.actions.declare_file(ctx.label.name + "_build.tar")
     build_log = ctx.actions.declare_file(ctx.label.name + "_build.log")
-    release_dir = ctx.actions.declare_directory(ctx.label.name + "_release_dir")
 
-    version_file = ctx.actions.declare_file(ctx.label.name + "_version")
+    # erlang_build produces only the relocatable release tarball.
+    # erlang_release_archive turns a tarball (built here, or fetched as a
+    # prebuilt) into the tree artifact + OtpInfo the toolchain consumes.
+    release_tar = ctx.actions.declare_file(ctx.label.name + "_release.tar")
 
     extra_configure_opts = " ".join(ctx.attr.extra_configure_opts)
     pre_configure_cmds = "\n".join(ctx.attr.pre_configure_cmds)
@@ -181,11 +183,13 @@ cd "$ABS_DEST_DIR"
 ./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
 echo "    Install script finished"
 
-# Populate the output tree artifact with the relocatable release. tar -h
+# Embed OTP_VERSION at the release root so erlang_release_archive can read it
+# from any tarball, then create the relocatable release tarball. tar -h
 # dereferences the lone internal bin/epmd symlink into a plain file (so the
-# tree artifact contains no symlinks -> robust on remote execution) while
+# extracted tree has no symlinks -> robust on remote execution) while
 # preserving executable bits.
-tar -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -\
+cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
+tar -chf "$ABS_RELEASE_TAR" .\
 """.format(install_path = install_path)
     else:
         # We pass -cross even for native builds because the Install script
@@ -200,11 +204,13 @@ cd "$ABS_DEST_DIR"
 ./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
 echo "    Install script finished"
 
-# Populate the output tree artifact with the relocatable release. tar -h
+# Embed OTP_VERSION at the release root so erlang_release_archive can read it
+# from any tarball, then create the relocatable release tarball. tar -h
 # dereferences the lone internal bin/epmd symlink into a plain file (so the
-# tree artifact contains no symlinks -> robust on remote execution) while
+# extracted tree has no symlinks -> robust on remote execution) while
 # preserving executable bits.
-tar -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -\
+cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
+tar -chf "$ABS_RELEASE_TAR" .\
 """.format(install_path = install_path)
 
     ctx.actions.run_shell(
@@ -212,8 +218,7 @@ tar -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -\
         outputs = [
             build_dir_tar,
             build_log,
-            release_dir,
-            version_file,
+            release_tar,
         ],
         command = """set -euo pipefail
 
@@ -225,8 +230,7 @@ if [ -n "{sha256}" ]; then
 fi
 
 ABS_BUILD_DIR_TAR=$PWD/{build_path}
-ABS_RELEASE_DIR=$PWD/{release_dir_path}
-ABS_VERSION_FILE=$PWD/{version_file}
+ABS_RELEASE_TAR=$PWD/{release_tar_path}
 ABS_LOG=$PWD/{build_log}
 EXECROOT=$PWD
 
@@ -266,22 +270,22 @@ echo "    make finished"
 
 {install_cmds}
 
-# Validate version from source tree (works for both native and cross builds)
+# Validate version from source tree (works for both native and cross builds).
+# erlang_release_archive re-validates against the embedded OTP_VERSION and
+# produces the version_file that keys the toolchain cache.
 {begins_with_fun}
 OTP_REL=$(tr -d '[:space:]' < "$ABS_BUILD_DIR/OTP_VERSION")
 if ! beginswith "{erlang_version}" "$OTP_REL"; then
     echo "Erlang version mismatch (Expected {erlang_version}, found $OTP_REL)"
     exit 1
 fi
-echo "$OTP_REL" > "$ABS_VERSION_FILE"
 """.format(
             sha256 = ctx.attr.sha256v,
             sha256file = sha256file.path,
             archive_path = downloaded_archive.path,
             strip_prefix = strip_prefix,
             build_path = build_dir_tar.path,
-            release_dir_path = release_dir.path,
-            version_file = version_file.path,
+            release_tar_path = release_tar.path,
             install_path = install_path,
             install_root = install_root,
             build_log = build_log.path,
@@ -306,19 +310,7 @@ echo "$OTP_REL" > "$ABS_VERSION_FILE"
 
     return [
         DefaultInfo(
-            files = depset([
-                release_dir,
-                version_file,
-            ]),
-        ),
-        OtpInfo(
-            version = ctx.attr.version,
-            release_dir = release_dir,
-            # Relocatable: consumers export ERL_ROOTDIR to release_dir's
-            # absolute path (see maybe_install_erlang), so erlang_home is the
-            # shell reference rather than a fixed install location.
-            erlang_home = "$ERL_ROOTDIR",
-            version_file = version_file,
+            files = depset([release_tar]),
         ),
     ]
 
@@ -373,6 +365,100 @@ erlang_build = rule(
         ),
         "sha256": tools["sha256"],
     },
+)
+
+def _erlang_release_archive_impl(ctx):
+    release_dir = ctx.actions.declare_directory(ctx.label.name + "_release_dir")
+    version_file = ctx.actions.declare_file(ctx.label.name + "_version")
+
+    ctx.actions.run_shell(
+        inputs = [ctx.file.tar],
+        outputs = [release_dir, version_file],
+        command = """set -euo pipefail
+
+ABS_TAR="$PWD/{tar}"
+ABS_RELEASE_DIR="$PWD/{release_dir}"
+ABS_VERSION_FILE="$PWD/{version_file}"
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# GNU tar autodetects compression, so this handles .tar, .tar.gz, and the
+# extensionless name http_file gives a downloaded archive -- no branching on
+# the filename suffix.
+tar -C "$WORK" --no-same-owner -xf "$ABS_TAR"
+
+# Copy into the tree artifact, dereferencing any symlinks (tar -h) so the
+# output contains no symlinks (robust on remote execution) and preserving
+# executable bits -- regardless of how the input tarball was produced.
+tar -C "$WORK" -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -
+
+# OTP_VERSION is embedded at the release root by erlang_build; fall back to the
+# standard releases/<rel>/OTP_VERSION location for third-party tarballs.
+{begins_with_fun}
+if [ -f "$ABS_RELEASE_DIR/OTP_VERSION" ]; then
+    OTP_REL=$(tr -d '[:space:]' < "$ABS_RELEASE_DIR/OTP_VERSION")
+else
+    OTP_REL=$(tr -d '[:space:]' < "$ABS_RELEASE_DIR"/releases/*/OTP_VERSION)
+fi
+if ! beginswith "{version}" "$OTP_REL"; then
+    echo "Erlang version mismatch (Expected {version}, found $OTP_REL)"
+    exit 1
+fi
+echo "$OTP_REL" > "$ABS_VERSION_FILE"
+""".format(
+            tar = ctx.file.tar.path,
+            release_dir = release_dir.path,
+            version_file = version_file.path,
+            begins_with_fun = BEGINS_WITH_FUN,
+            version = ctx.attr.version,
+        ),
+        use_default_shell_env = True,
+        mnemonic = "OTPRelease",
+        progress_message = "Extracting OTP release {}".format(ctx.label.name),
+    )
+
+    return [
+        DefaultInfo(
+            files = depset([
+                release_dir,
+                version_file,
+            ]),
+        ),
+        OtpInfo(
+            version = ctx.attr.version,
+            release_dir = release_dir,
+            # Relocatable: consumers export ERL_ROOTDIR to release_dir's
+            # absolute path (see maybe_install_erlang), so erlang_home is the
+            # shell reference rather than a fixed install location.
+            erlang_home = "$ERL_ROOTDIR",
+            version_file = version_file,
+        ),
+    ]
+
+erlang_release_archive = rule(
+    implementation = _erlang_release_archive_impl,
+    # Mirror erlang_build's transition so the extracted tree is analyzed in the
+    # same (platform-independent) configuration as the build that produced the
+    # tarball -- otherwise the toolchain and erts_layer/bootstrap would pull the
+    # tree in different configs and extract it twice.
+    cfg = platform_independent_transition,
+    attrs = {
+        "tar": attr.label(
+            mandatory = True,
+            allow_single_file = True,
+            doc = "A relocatable Erlang/OTP release tarball -- either an " +
+                  "erlang_build output or a prebuilt fetched via http_file. " +
+                  "Extracted into a tree artifact; OTP_VERSION is read from its " +
+                  "root (or releases/*/OTP_VERSION).",
+        ),
+        "version": attr.string(
+            mandatory = True,
+            doc = "Expected OTP version prefix, validated against the tarball's " +
+                  "embedded OTP_VERSION.",
+        ),
+    },
+    provides = [OtpInfo],
 )
 
 def _erlang_external_impl(ctx):

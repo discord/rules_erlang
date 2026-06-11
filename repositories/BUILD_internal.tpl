@@ -3,14 +3,17 @@
 load(
     "%{RULES_ERLANG_WORKSPACE}//private:erlang_build.bzl",
     "erlang_build",
+    "erlang_release_archive",
 )
 load(
     "%{RULES_ERLANG_WORKSPACE}//tools:erlang_toolchain.bzl",
     "erlang_toolchain",
 )
 
+# erlang_build produces only the relocatable release tarball. Build
+# //...:otp-%{ERLANG_NAME}_build directly to stash a prebuilt for reuse.
 erlang_build(
-    name = "otp-%{ERLANG_NAME}",
+    name = "otp-%{ERLANG_NAME}_build",
     version = "%{ERLANG_VERSION}",
     url = "%{URL}",
     strip_prefix = "%{STRIP_PREFIX}",
@@ -26,6 +29,15 @@ erlang_build(
     cc_toolchain_files = %{CC_TOOLCHAIN_FILES},
     cc_sysroot_files = %{CC_SYSROOT_FILES},
     cc_configure_env = %{CC_CONFIGURE_ENV},
+    visibility = ["//visibility:public"],
+)
+
+# Extract the tarball into the tree artifact + OtpInfo the toolchain consumes.
+# bootstrap_otp references (and erts_layer) point at this target.
+erlang_release_archive(
+    name = "otp-%{ERLANG_NAME}",
+    tar = ":otp-%{ERLANG_NAME}_build",
+    version = "%{ERLANG_VERSION}",
     visibility = ["//visibility:public"],
 )
 
