@@ -11,6 +11,7 @@ _ERLANG_VERSION_UNKNOWN = "UNKNOWN"
 
 INSTALLATION_TYPE_EXTERNAL = "external"
 INSTALLATION_TYPE_INTERNAL = "internal"
+INSTALLATION_TYPE_PREBUILT = "prebuilt"
 
 def _parse_maybe_semver(version_string):
     parts = version_string.split(".", 2)
@@ -81,6 +82,7 @@ def _impl(repository_ctx):
             cc_toolchain_files = repository_ctx.attr.cc_toolchain_filess.get(name, ""),
             cc_sysroot_files = repository_ctx.attr.cc_sysroot_filess.get(name, ""),
             cc_configure_envs = repository_ctx.attr.cc_configure_envss.get(name, []),
+            prebuilt_archive_label = repository_ctx.attr.prebuilt_archive_labels.get(name, None),
         )
 
     for (name, props) in erlang_installations.items():
@@ -102,6 +104,22 @@ def _impl(repository_ctx):
                     "%{ERLANG_MAJOR}": props.major,
                     "%{ERLANG_MINOR}": props.minor,
                     "%{RULES_ERLANG_WORKSPACE}": rules_erlang_workspace,
+                    "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
+                    "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
+                },
+                False,
+            )
+        elif props.type == INSTALLATION_TYPE_PREBUILT:
+            repository_ctx.template(
+                "{}/BUILD.bazel".format(name),
+                Label("//repositories:BUILD_prebuilt.tpl"),
+                {
+                    "%{ERLANG_NAME}": name,
+                    "%{ERLANG_VERSION}": props.version,
+                    "%{ERLANG_MAJOR}": props.major,
+                    "%{ERLANG_MINOR}": props.minor,
+                    "%{RULES_ERLANG_WORKSPACE}": rules_erlang_workspace,
+                    "%{PREBUILT_ARCHIVE_LABEL}": props.prebuilt_archive_label,
                     "%{EXTRA_TARGET_CONSTRAINTS}": extra_target_constraints,
                     "%{EXTRA_EXEC_CONSTRAINTS}": extra_exec_constraints,
                 },
@@ -203,6 +221,7 @@ erlang_config = repository_rule(
         "cc_toolchain_filess": attr.string_dict(),
         "cc_sysroot_filess": attr.string_dict(),
         "cc_configure_envss": attr.string_list_dict(),
+        "prebuilt_archive_labels": attr.string_dict(),
     },
     environ = [
         ERLANG_HOME_ENV_VAR,
@@ -300,6 +319,11 @@ constraint_value(
 
 constraint_value(
     name = "erlang_internal",
+    constraint_setting = ":erlang_internal_external",
+)
+
+constraint_value(
+    name = "erlang_prebuilt",
     constraint_setting = ":erlang_internal_external",
 )
 
