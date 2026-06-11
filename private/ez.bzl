@@ -73,7 +73,7 @@ def _impl(ctx):
 
 {maybe_install_erlang}
 
-VERSION=$({erlang_home}/bin/{extract_version})
+VERSION=$("{erlang_home}"/bin/{extract_version})
 
 {build_directory_commands}
 

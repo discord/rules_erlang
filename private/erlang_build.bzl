@@ -23,13 +23,15 @@ OtpInfo = provider(
     fields = {
         "version": """The version that this build contains.
 May be a prefix of the exact version found in the version_file.""",
-        "release_dir_tar": """Directory containing a built erlang.
-If this value is not None, it must be symlinked into
-erlang_home and used from there, as erlang installations
-are not relocatable.""",
-        "install_path": """Directory to unpack the release_dir_tar into""",
-        "erlang_home": """Absolute path to the erlang
-installation""",
+        "release_dir": """A tree artifact (declare_directory) containing a
+relocatable Erlang/OTP release (bin/, lib/, erts-*/, releases/). None for
+external installations. OTP 25+ installs are relocatable, so consumers export
+ERL_ROOTDIR to this directory's absolute path before invoking erl; see
+maybe_install_erlang().""",
+        "erlang_home": """For external installations, the absolute path to the
+erlang installation. For relocatable (internal/prebuilt) installations, the
+literal string "$ERL_ROOTDIR" -- consumers always run inside a shell that has
+exported ERL_ROOTDIR via maybe_install_erlang().""",
         "version_file": """A file containing the version of this
 erlang, used to correctly invalidate the cache when an
 external erlang is used""",
@@ -48,7 +50,7 @@ def _erlang_build_impl(ctx):
 
     build_dir_tar = ctx.actions.declare_file(ctx.label.name + "_build.tar")
     build_log = ctx.actions.declare_file(ctx.label.name + "_build.log")
-    release_dir_tar = ctx.actions.declare_file(ctx.label.name + "_release.tar")
+    release_dir = ctx.actions.declare_directory(ctx.label.name + "_release_dir")
 
     version_file = ctx.actions.declare_file(ctx.label.name + "_version")
 
@@ -151,20 +153,19 @@ fi\
     bootstrap_otp = ctx.attr.bootstrap_otp[0] if ctx.attr.bootstrap_otp else None
     if bootstrap_otp != None:
         bootstrap_info = bootstrap_otp[OtpInfo]
-        if bootstrap_info.release_dir_tar == None:
+        if bootstrap_info.release_dir == None:
             # External erlang — just put it in PATH
             bootstrap_setup = 'export PATH="{erlang_home}/bin:$PATH"'.format(
                 erlang_home = bootstrap_info.erlang_home,
             )
         else:
-            bootstrap_inputs = [bootstrap_info.release_dir_tar]
-            bootstrap_setup = """\
-BOOTSTRAP_DIR="$(mktemp -d)"
-tar --extract --no-same-owner \\
-    --directory "$BOOTSTRAP_DIR" \\
-    --file "{bootstrap_tar}"
-export PATH="$BOOTSTRAP_DIR/bin:$PATH"\
-""".format(bootstrap_tar = bootstrap_info.release_dir_tar.path)
+            # The bootstrap is a tree artifact (relocatable OTP release).
+            # No extraction needed -- just put its bin/ on PATH. The action
+            # runs in the execroot, so $PWD-relative is correct here.
+            bootstrap_inputs = [bootstrap_info.release_dir]
+            bootstrap_setup = 'export PATH="$PWD/{bootstrap_dir}/bin:$PATH"'.format(
+                bootstrap_dir = bootstrap_info.release_dir.path,
+            )
 
     # Always use `make release` for a consistent flat directory layout
     # (bin/, lib/, erts-X.Y.Z/ at root) regardless of whether we're
@@ -180,9 +181,11 @@ cd "$ABS_DEST_DIR"
 ./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
 echo "    Install script finished"
 
-tar --create \\
-    --file "$ABS_RELEASE_DIR_TAR" \\
-    *\
+# Populate the output tree artifact with the relocatable release. tar -h
+# dereferences the lone internal bin/epmd symlink into a plain file (so the
+# tree artifact contains no symlinks -> robust on remote execution) while
+# preserving executable bits.
+tar -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -\
 """.format(install_path = install_path)
     else:
         # We pass -cross even for native builds because the Install script
@@ -197,9 +200,11 @@ cd "$ABS_DEST_DIR"
 ./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
 echo "    Install script finished"
 
-tar --create \\
-    --file "$ABS_RELEASE_DIR_TAR" \\
-    *\
+# Populate the output tree artifact with the relocatable release. tar -h
+# dereferences the lone internal bin/epmd symlink into a plain file (so the
+# tree artifact contains no symlinks -> robust on remote execution) while
+# preserving executable bits.
+tar -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -\
 """.format(install_path = install_path)
 
     ctx.actions.run_shell(
@@ -207,7 +212,7 @@ tar --create \\
         outputs = [
             build_dir_tar,
             build_log,
-            release_dir_tar,
+            release_dir,
             version_file,
         ],
         command = """set -euo pipefail
@@ -220,7 +225,7 @@ if [ -n "{sha256}" ]; then
 fi
 
 ABS_BUILD_DIR_TAR=$PWD/{build_path}
-ABS_RELEASE_DIR_TAR=$PWD/{release_path}
+ABS_RELEASE_DIR=$PWD/{release_dir_path}
 ABS_VERSION_FILE=$PWD/{version_file}
 ABS_LOG=$PWD/{build_log}
 EXECROOT=$PWD
@@ -275,7 +280,7 @@ echo "$OTP_REL" > "$ABS_VERSION_FILE"
             archive_path = downloaded_archive.path,
             strip_prefix = strip_prefix,
             build_path = build_dir_tar.path,
-            release_path = release_dir_tar.path,
+            release_dir_path = release_dir.path,
             version_file = version_file.path,
             install_path = install_path,
             install_root = install_root,
@@ -299,20 +304,20 @@ echo "$OTP_REL" > "$ABS_VERSION_FILE"
         ),
     )
 
-    erlang_home = install_path
-
     return [
         DefaultInfo(
             files = depset([
-                release_dir_tar,
+                release_dir,
                 version_file,
             ]),
         ),
         OtpInfo(
             version = ctx.attr.version,
-            release_dir_tar = release_dir_tar,
-            install_path = install_path,
-            erlang_home = erlang_home,
+            release_dir = release_dir,
+            # Relocatable: consumers export ERL_ROOTDIR to release_dir's
+            # absolute path (see maybe_install_erlang), so erlang_home is the
+            # shell reference rather than a fixed install location.
+            erlang_home = "$ERL_ROOTDIR",
             version_file = version_file,
         ),
     ]
@@ -411,8 +416,7 @@ echo "$V" >> {version_file}
         ),
         OtpInfo(
             version = erlang_version,
-            release_dir_tar = None,
-            install_path = None,
+            release_dir = None,
             erlang_home = erlang_home,
             version_file = version_file,
         ),

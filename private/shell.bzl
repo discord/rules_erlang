@@ -64,10 +64,13 @@ echo on
         content = script,
     )
 
-    runfiles = ctx.runfiles(
+    # Merge (not overwrite) the toolchain runfiles from erlang_dirs so the OTP
+    # release_dir tree artifact is materialized for ERL_ROOTDIR. (Previously this
+    # leaned on the mkdir-lock populating a global /tmp path as a side effect.)
+    runfiles = runfiles.merge(ctx.runfiles(
         files = ctx.files.data,
         transitive_files = depset(erl_libs_files),
-    )
+    ))
 
     return [DefaultInfo(
         runfiles = runfiles,

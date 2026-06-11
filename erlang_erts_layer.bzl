@@ -19,34 +19,35 @@ ErtsLayerInfo = provider(
 def _erlang_erts_layer_impl(ctx):
     otp_info = ctx.attr.otp[OtpInfo]
 
-    if otp_info.release_dir_tar == None:
-        fail("otp target must provide a release_dir_tar (external erlang not supported)")
+    if otp_info.release_dir == None:
+        fail("otp target must provide a release_dir (external erlang not supported)")
 
     # Declare output tar file
     output_tar = ctx.actions.declare_file(ctx.label.name + ".tar")
 
-    # The release tar already has the flat release layout (bin/, lib/,
-    # erts-X.Y.Z/) at root. We repackage it under a prefix so the
-    # container layer installs ERTS at a known absolute path.
+    # release_dir is a tree artifact with the flat release layout (bin/, lib/,
+    # erts-X.Y.Z/) at root. We repackage it under a prefix so the container
+    # layer installs ERTS at a known absolute path (consumers set
+    # ERL_ROOTDIR=/opt/erlang).
     install_prefix = "/opt/erlang"
 
     ctx.actions.run_shell(
-        inputs = [otp_info.release_dir_tar],
+        inputs = [otp_info.release_dir],
         outputs = [output_tar],
         command = """set -euo pipefail
 
-ABS_INPUT_TAR="$PWD/{input_tar}"
+ABS_RELEASE_DIR="$PWD/{release_dir}"
 ABS_OUTPUT_TAR="$PWD/{output_tar}"
 
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 mkdir -p "$WORK_DIR{install_prefix}"
-tar --no-same-owner -xf "$ABS_INPUT_TAR" -C "$WORK_DIR{install_prefix}"
+tar -C "$ABS_RELEASE_DIR" -cf - . | tar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
 tar -cf "$ABS_OUTPUT_TAR" -C "$WORK_DIR" .{install_prefix}
 
 """.format(
-            input_tar = otp_info.release_dir_tar.path,
+            release_dir = otp_info.release_dir.path,
             output_tar = output_tar.path,
             install_prefix = install_prefix,
         ),
