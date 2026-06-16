@@ -9,7 +9,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def _impl(ctx):
@@ -37,13 +37,13 @@ def _impl(ctx):
         output = ctx.actions.declare_file(ctx.label.name)
         script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 "{erlang_home}"/bin/escript {assert_applications} \\
     "{app_file}" \\
     {expected}
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
+            erl_rootdir_setup = erl_rootdir_setup(ctx, runfiles = True),
             erlang_home = erlang_home,
             assert_applications = assert_applications_path,
             app_file = app_file.short_path,

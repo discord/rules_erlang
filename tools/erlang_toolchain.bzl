@@ -53,7 +53,7 @@ def erlang_home(otpinfo):
       context (build action vs `bazel run` vs `bazel test`).
 
       In these cases, we return the `$ERL_ROOTDIR` literal, and depend on
-      `maybe_install_erlang` to resolve the appropriate path given the context
+      `erl_rootdir_setup` to resolve the appropriate path given the context
       (build vs. run/test).
 
     This is always interpolated into a template, so ensure we fail early if we
@@ -89,26 +89,31 @@ def erlang_dirs(ctx):
         ])
     return (erlang_home(info), info.release_dir, runfiles)
 
-# TODO: we should probably name thing something that's more relevant.
-def maybe_install_erlang(ctx, short_path = False):
-    # OTP 25+ installs are relocatable: erl honors $ERL_ROOTDIR (falling back to
-    # the baked-in path only when unset). So instead of the old mkdir-lock + tar
-    # extract into a fixed absolute path, we just point ERL_ROOTDIR at the
-    # release_dir tree artifact -- Bazel materializes it like any other input,
-    # hermetically and with no shared mutable state. erlang_home is "$ERL_ROOTDIR"
-    # (see erlang_dirs / OtpInfo) so consumer templates need no changes.
+def erl_rootdir_setup(ctx, runfiles = False):
+    """Shell that exports ERL_ROOTDIR so a templated "$ERL_ROOTDIR"/bin/erl resolves.
+
+    Returns the `export ERL_ROOTDIR=...` line to prepend to a generated script
+    (empty for an external/host erlang, which needs no setup). Pairs with
+    erlang_home(): that emits the "$ERL_ROOTDIR" reference, this gives it a value.
+
+    Pass runfiles = True when the script runs from a runfiles tree -- i.e. it is
+    an executable launched by `bazel run` or `bazel test`, so the release dir is
+    addressed by its short_path. Leave runfiles = False (the default) when the
+    script runs inside a build action, where cwd is the execroot and the release
+    dir is addressed by its (execroot-relative) path.
+    """
     info = _build_info(ctx)
     release_dir = info.release_dir
     if release_dir == None:
         # External erlang: erlang_home is already an absolute host path, and
         # ERL_ROOTDIR is left to erl's baked-in default.
         return ""
-    if short_path:
-        # Executable / test context: the release dir is in the runfiles tree.
-        # Under `bazel test`, resolve via $TEST_SRCDIR/$TEST_WORKSPACE; under
-        # `bazel run` the cwd is the main-workspace runfiles dir (matching
-        # shell.bzl / escript_wrapper), so anchor on $PWD. ERL_ROOTDIR must be
-        # absolute (it becomes ROOTDIR for the boot scripts).
+    if runfiles:
+        # Runfiles context. Under `bazel test`, resolve via
+        # $TEST_SRCDIR/$TEST_WORKSPACE; under `bazel run` the cwd is the
+        # main-workspace runfiles dir (matching shell.bzl / escript_wrapper), so
+        # anchor on $PWD. ERL_ROOTDIR must be absolute (it becomes ROOTDIR for
+        # the boot scripts).
         return """\
 if [ -n "${{TEST_SRCDIR:-}}" ]; then
     export ERL_ROOTDIR="$TEST_SRCDIR/$TEST_WORKSPACE/{short_path}"

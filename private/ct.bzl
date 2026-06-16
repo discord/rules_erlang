@@ -25,7 +25,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def sanitize_sname(s):
@@ -122,7 +122,7 @@ def _impl(ctx):
 #!/usr/bin/env bash
 set -eo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 COVER_ARGS=
 if [ -n "${{COVERAGE}}" ]; then
@@ -196,7 +196,7 @@ if [ -n "${{COVERAGE}}" ]; then
         > ${{TEST_UNDECLARED_OUTPUTS_DIR}}/coverdata_to_lcov.log
 fi
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
+            erl_rootdir_setup = erl_rootdir_setup(ctx, runfiles = True),
             app_name = app_name,
             apps_ebin_dirs_term = to_erlang_string_list(apps_ebin_dirs),
             erlang_home = erlang_home,

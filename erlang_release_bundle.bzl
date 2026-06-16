@@ -22,7 +22,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def _impl(ctx):
@@ -152,7 +152,7 @@ fi
     # Create the shell script to build the bundle
     script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 BUNDLE_DIR="{bundle_dir}"
 MANIFEST_FILE="{manifest_file}"
@@ -203,7 +203,7 @@ cp "$REL_FILE" "$BUNDLE_DIR/releases/$RELEASE_VERSION/"
 
 echo "Bundle created successfully at $BUNDLE_DIR"
 """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        erl_rootdir_setup = erl_rootdir_setup(ctx),
         erlang_home = erlang_home,
         bundle_dir = bundle_dir.path,
         manifest_file = release_info.manifest_file.path,

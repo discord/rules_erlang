@@ -27,13 +27,13 @@ May be a prefix of the exact version found in the version_file.""",
 relocatable Erlang/OTP release (bin/, lib/, erts-*/, releases/). None for
 external installations. OTP 25+ installs are relocatable, so consumers export
 ERL_ROOTDIR to this directory's absolute path before invoking erl; see
-maybe_install_erlang().""",
+erl_rootdir_setup().""",
         "erlang_home": """For external installations, the absolute path to the
 erlang installation. None for relocatable (internal/prebuilt) installations --
 their absolute path isn't known until runfiles/execroot are materialized, so
 consumers derive the template prefix via erlang_home() in
 tools/erlang_toolchain.bzl (which returns "$ERL_ROOTDIR", valid only after
-maybe_install_erlang() has exported it).""",
+erl_rootdir_setup() has exported it).""",
         "version_file": """A file containing the version of this
 erlang, used to correctly invalidate the cache when an
 external erlang is used""",
@@ -432,7 +432,7 @@ echo "$OTP_REL" > "$ABS_VERSION_FILE"
             release_dir = release_dir,
             # Relocatable: absolute root isn't known at analysis time. The
             # template prefix is derived by erlang_home() in
-            # tools/erlang_toolchain.bzl ("$ERL_ROOTDIR"); maybe_install_erlang()
+            # tools/erlang_toolchain.bzl ("$ERL_ROOTDIR"); erl_rootdir_setup()
             # exports it. So this field carries no path (None, like release_dir
             # for external installs -- fails loud if ever read directly).
             erlang_home = None,

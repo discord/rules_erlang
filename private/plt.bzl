@@ -4,7 +4,7 @@ load(":util.bzl", "erl_libs_contents")
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 _IGNORE_WARNINGS = """if [ $R -eq 2 ]; then
@@ -93,7 +93,7 @@ def _impl(ctx):
 #!/usr/bin/env bash
 set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 # without HOME being set, dialyzer will error regarding a default plt
 export HOME={home}
@@ -115,7 +115,7 @@ echo "DIALYZER: Output written to {logfile}"
 {ignore_warnings_clause}
 exit $R
 """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        erl_rootdir_setup = erl_rootdir_setup(ctx),
         erlang_home = erlang_home,
         home = home_dir.path,
         erl_libs_path = erl_libs_path,

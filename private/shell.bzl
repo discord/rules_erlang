@@ -8,7 +8,7 @@ load(":util.bzl", "erl_libs_contents")
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def _impl(ctx):
@@ -33,14 +33,14 @@ def _impl(ctx):
 #!/usr/bin/env bash
 set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 export ERL_LIBS=$PWD/{erl_libs_path}
 
 set -x
 "{erlang_home}"/bin/erl {extra_erl_args} $@
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
+            erl_rootdir_setup = erl_rootdir_setup(ctx, runfiles = True),
             erlang_home = erlang_home,
             erl_libs_path = erl_libs_path,
             extra_erl_args = " ".join(ctx.attr.extra_erl_args),
