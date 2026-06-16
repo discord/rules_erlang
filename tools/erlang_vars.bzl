@@ -1,3 +1,5 @@
+load(":erlang_toolchain.bzl", "erlang_home")
+
 ERLANG_VARS_ENV_MAP = {
     "OTP_VERSION": "$(OTP_VERSION)",
     "OTP_VERSION_FILE_PATH": "$(OTP_VERSION_FILE_PATH)",
@@ -20,7 +22,7 @@ def _impl(ctx):
         "OTP_VERSION": otpinfo.version,
         "OTP_VERSION_FILE_PATH": otpinfo.version_file.path,
         "OTP_VERSION_FILE_SHORT_PATH": otpinfo.version_file.short_path,
-        "ERLANG_HOME": otpinfo.erlang_home,
+        "ERLANG_HOME": erlang_home(otpinfo),
     }
     if otpinfo.release_dir != None:
         vars["ERLANG_RELEASE_DIR_PATH"] = otpinfo.release_dir.path

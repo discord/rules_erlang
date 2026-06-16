@@ -7,7 +7,7 @@ def _impl(ctx):
     otpinfo = ctx.attr.otp[OtpInfo]
     vars = {
         "OTP_VERSION": otpinfo.version,
-        "ERLANG_HOME": otpinfo.erlang_home,
+        "ERLANG_HOME": erlang_home(otpinfo),
     }
     if otpinfo.release_dir != None:
         vars["ERLANG_RELEASE_DIR_PATH"] = otpinfo.release_dir.path
@@ -38,8 +38,46 @@ erlang_toolchain = rule(
 def _build_info(ctx):
     return ctx.toolchains["//tools:toolchain_type"].otpinfo
 
+def erlang_home(otpinfo):
+    """The text to write before "/bin/erl" in a generated shell script.
+
+    Two cases, by where the OTP install lives:
+
+    * Host (external) install: erl sits at a fixed path on the machine that we
+      already know at analysis time. Return that absolute path; the line
+      becomes e.g. "/usr/lib/erlang"/bin/erl.
+
+    * Bazel-managed install (locally-built or prebuilt): erl lives in a Bazel
+      tree artifact whose absolute path we do not know at analysis time -- the
+      path Bazel gives us is relative, and the absolute location differs by run
+      context (build action vs `bazel run` vs `bazel test`).
+
+      In these cases, we return the `$ERL_ROOTDIR` literal, and depend on
+      `maybe_install_erlang` to resolve the appropriate path given the context
+      (build vs. run/test).
+
+    This is always interpolated into a template, so ensure we fail early if we
+    are in an inconsistent state (and never return None).
+    """
+    if otpinfo.release_dir != None:
+        return "$ERL_ROOTDIR"
+    if otpinfo.erlang_home == None:
+        fail("OtpInfo.erlang_home is None for a non-relocatable (external) " +
+             "install. External installs must carry an absolute path; this " +
+             "OtpInfo is malformed.")
+    return otpinfo.erlang_home
+
 def erlang_dirs(ctx):
     info = _build_info(ctx)
+
+    # erl.exe resolves its root from erl.ini, not $ERL_ROOTDIR, so a relocatable
+    # (release_dir) toolchain can't work on a Windows target -- fail loudly here
+    # rather than emit a broken .bat. Use a host (external) erlang on Windows.
+    if getattr(ctx.attr, "is_windows", False) and info.release_dir != None:
+        fail("relocatable OTP toolchain (release_dir) is unsupported on Windows " +
+             "targets: erl.exe reads its root from erl.ini, not $ERL_ROOTDIR. " +
+             "Use an external (host) erlang toolchain for Windows.")
+
     if info.release_dir != None:
         runfiles = ctx.runfiles([
             info.release_dir,
@@ -49,8 +87,9 @@ def erlang_dirs(ctx):
         runfiles = ctx.runfiles([
             info.version_file,
         ])
-    return (info.erlang_home, info.release_dir, runfiles)
+    return (erlang_home(info), info.release_dir, runfiles)
 
+# TODO: we should probably name thing something that's more relevant.
 def maybe_install_erlang(ctx, short_path = False):
     # OTP 25+ installs are relocatable: erl honors $ERL_ROOTDIR (falling back to
     # the baked-in path only when unset). So instead of the old mkdir-lock + tar
