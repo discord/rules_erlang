@@ -67,6 +67,16 @@ def erlang_home(otpinfo):
              "OtpInfo is malformed.")
     return otpinfo.erlang_home
 
+def otp_runfiles(ctx, otpinfo):
+    """Runfiles needed to invoke erl from an OtpInfo (the release tree + version file).
+
+    Pure (takes an OtpInfo, no toolchain lookup) so callers outside this toolchain
+    -- e.g. rules that carry OTP on an `otp` attr -- can reuse it.
+    """
+    if otpinfo.release_dir != None:
+        return ctx.runfiles([otpinfo.release_dir, otpinfo.version_file])
+    return ctx.runfiles([otpinfo.version_file])
+
 def erlang_dirs(ctx):
     info = _build_info(ctx)
 
@@ -78,23 +88,16 @@ def erlang_dirs(ctx):
              "targets: erl.exe reads its root from erl.ini, not $ERL_ROOTDIR. " +
              "Use an external (host) erlang toolchain for Windows.")
 
-    if info.release_dir != None:
-        runfiles = ctx.runfiles([
-            info.release_dir,
-            info.version_file,
-        ])
-    else:
-        runfiles = ctx.runfiles([
-            info.version_file,
-        ])
-    return (erlang_home(info), info.release_dir, runfiles)
+    return (erlang_home(info), info.release_dir, otp_runfiles(ctx, info))
 
-def erl_rootdir_setup(ctx, runfiles = False):
+def otp_rootdir_setup(otpinfo, runfiles = False):
     """Shell that exports ERL_ROOTDIR so a templated "$ERL_ROOTDIR"/bin/erl resolves.
 
     Returns the `export ERL_ROOTDIR=...` line to prepend to a generated script
     (empty for an external/host erlang, which needs no setup). Pairs with
     erlang_home(): that emits the "$ERL_ROOTDIR" reference, this gives it a value.
+    Pure (takes an OtpInfo, no toolchain lookup) so callers outside this toolchain
+    -- e.g. rules that carry OTP on an `otp` attr -- can reuse it.
 
     Pass runfiles = True when the script runs from a runfiles tree -- i.e. it is
     an executable launched by `bazel run` or `bazel test`, so the release dir is
@@ -102,8 +105,7 @@ def erl_rootdir_setup(ctx, runfiles = False):
     script runs inside a build action, where cwd is the execroot and the release
     dir is addressed by its (execroot-relative) path.
     """
-    info = _build_info(ctx)
-    release_dir = info.release_dir
+    release_dir = otpinfo.release_dir
     if release_dir == None:
         # External erlang: erlang_home is already an absolute host path, and
         # ERL_ROOTDIR is left to erl's baked-in default.
@@ -124,6 +126,10 @@ fi\
     else:
         # Build-action context: cwd is the execroot.
         return 'export ERL_ROOTDIR="$PWD/{}"'.format(release_dir.path)
+
+def erl_rootdir_setup(ctx, runfiles = False):
+    """erl_rootdir_setup for this rule's resolved erlang toolchain; see otp_rootdir_setup."""
+    return otp_rootdir_setup(_build_info(ctx), runfiles)
 
 def version_file(ctx):
     info = _build_info(ctx)
