@@ -234,11 +234,12 @@ erlang_config = repository_rule(
         # up-front, even if we don't use them.
         "prebuilt_archive_labels": attr.string_dict(),
     },
+    # these are tracked, so that a change in ERLANG_HOME or PATH invalidates
+    # builds for external toolchains
     environ = [
         ERLANG_HOME_ENV_VAR,
         "PATH",
     ],
-    local = True,
 )
 
 def _erlang_home_from_erl_path(repository_ctx, erl_path):
