@@ -11,7 +11,8 @@ load(
 )
 
 # erlang_build produces only the relocatable release tarball. Build
-# //...:otp-%{ERLANG_NAME}_build directly to stash a prebuilt for reuse.
+# the `otp-%{ERLANG_NAME}_build` target directly to stash a prebuilt
+# for reuse.
 erlang_build(
     name = "otp-%{ERLANG_NAME}_build",
     version = "%{ERLANG_VERSION}",
