@@ -9,6 +9,8 @@ ERLANG_HOME_ENV_VAR = "ERLANG_HOME"
 _DEFAULT_EXTERNAL_ERLANG_PACKAGE_NAME = "external"
 _ERLANG_VERSION_UNKNOWN = "UNKNOWN"
 
+# external: use a host/pre-installed OTP. internal: build OTP from source.
+# prebuilt: extract a relocatable prebuilt tarball (no compilation).
 INSTALLATION_TYPE_EXTERNAL = "external"
 INSTALLATION_TYPE_INTERNAL = "internal"
 INSTALLATION_TYPE_PREBUILT = "prebuilt"
@@ -82,6 +84,8 @@ def _impl(repository_ctx):
             cc_toolchain_files = repository_ctx.attr.cc_toolchain_filess.get(name, ""),
             cc_sysroot_files = repository_ctx.attr.cc_sysroot_filess.get(name, ""),
             cc_configure_envs = repository_ctx.attr.cc_configure_envss.get(name, []),
+            # Label of the http_file-fetched tarball (@otp_<name>_prebuilt_archive//file,
+            # set by the module extension); None for non-prebuilt installs.
             prebuilt_archive_label = repository_ctx.attr.prebuilt_archive_labels.get(name, None),
         )
 
@@ -110,6 +114,8 @@ def _impl(repository_ctx):
                 False,
             )
         elif props.type == INSTALLATION_TYPE_PREBUILT:
+            # Renders BUILD_prebuilt.tpl, which extracts the tarball via
+            # erlang_release_archive (extract-only, no build) into a toolchain.
             repository_ctx.template(
                 "{}/BUILD.bazel".format(name),
                 Label("//repositories:BUILD_prebuilt.tpl"),
@@ -221,6 +227,7 @@ erlang_config = repository_rule(
         "cc_toolchain_filess": attr.string_dict(),
         "cc_sysroot_filess": attr.string_dict(),
         "cc_configure_envss": attr.string_list_dict(),
+        # name -> prebuilt tarball label, for INSTALLATION_TYPE_PREBUILT installs.
         "prebuilt_archive_labels": attr.string_dict(),
     },
     environ = [
@@ -322,6 +329,8 @@ constraint_value(
     constraint_setting = ":erlang_internal_external",
 )
 
+# Exec-platform constraint required by prebuilt (arch-specific) toolchains,
+# parallel to :erlang_internal / :erlang_external.
 constraint_value(
     name = "erlang_prebuilt",
     constraint_setting = ":erlang_internal_external",
