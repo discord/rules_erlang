@@ -227,7 +227,11 @@ erlang_config = repository_rule(
         "cc_toolchain_filess": attr.string_dict(),
         "cc_sysroot_filess": attr.string_dict(),
         "cc_configure_envss": attr.string_list_dict(),
-        # name -> prebuilt tarball label, for INSTALLATION_TYPE_PREBUILT installs.
+        # name -> prebuilt tarball label, only for INSTALLATION_TYPE_PREBUILT installs.
+        # NOTE: while these need to be labels, we treat them as strings here.
+        # evaluating these as labels now, vs. when they're used in the
+        # template, means we need to download all configured toolchains
+        # up-front, even if we don't use them.
         "prebuilt_archive_labels": attr.string_dict(),
     },
     environ = [
