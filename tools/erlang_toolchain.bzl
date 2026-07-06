@@ -116,12 +116,17 @@ def otp_rootdir_setup(otpinfo, runfiles = False):
         # main-workspace runfiles dir (matching shell.bzl / escript_wrapper), so
         # anchor on $PWD. ERL_ROOTDIR must be absolute (it becomes ROOTDIR for
         # the boot scripts).
-        return """\
+        return """
 if [ -n "${{TEST_SRCDIR:-}}" ]; then
     export ERL_ROOTDIR="$TEST_SRCDIR/$TEST_WORKSPACE/{short_path}"
 else
     export ERL_ROOTDIR="$PWD/{short_path}"
-fi\
+fi
+
+if ! [ -e "$ERL_ROOTDIR" ]; then
+    echo '$ERL_ROOTDIR points to non-existant path:' "$ERL_ROOTDIR" >&2
+    exit 1
+fi
 """.format(short_path = release_dir.short_path)
     else:
         # Build-action context: cwd is the execroot.
