@@ -42,6 +42,25 @@ external erlang is used""",
 
 DEFAULT_INSTALL_PREFIX = "/tmp/bazel/erlang"
 
+# OTP's release_spec rules always copy src/ (see e.g.
+# lib/stdlib/src/Makefile's release_spec target) with no build-time flag to
+# skip it, so we strip it (and other unused-at-runtime dirs) here instead.
+RELEASE_TAR_EXCLUDED_PATTERNS = [
+    "lib/*/src",
+    "lib/*/examples",
+    "lib/*/emacs",
+    "lib/*/java_src",
+    "lib/*/c_src",
+    "lib/*/doc",
+    "erts-*/src",
+    "erts-*/doc",
+    "erts-*/man",
+]
+RELEASE_TAR_EXCLUDES = " ".join([
+    "--exclude='{}'".format(pattern)
+    for pattern in RELEASE_TAR_EXCLUDED_PATTERNS
+])
+
 def _install_root(install_prefix):
     (root_dir, _, _) = install_prefix.removeprefix("/").partition("/")
     return "/" + root_dir
@@ -194,8 +213,8 @@ echo "    Install script finished"
 # extracted tree has no symlinks -> robust on remote execution) while
 # preserving executable bits.
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf "$ABS_RELEASE_TAR" .\
-""".format(install_path = install_path)
+tar -chf "$ABS_RELEASE_TAR" {release_excludes} .\
+""".format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
     else:
         # We pass -cross even for native builds because the Install script
         # checks that ERL_ROOT is an existing directory. With -cross, it
@@ -215,8 +234,8 @@ echo "    Install script finished"
 # extracted tree has no symlinks -> robust on remote execution) while
 # preserving executable bits.
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf "$ABS_RELEASE_TAR" .\
-""".format(install_path = install_path)
+tar -chf "$ABS_RELEASE_TAR" {release_excludes} .\
+""".format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
 
     ctx.actions.run_shell(
         inputs = [downloaded_archive, sha256file] + bootstrap_inputs + cc_inputs,
