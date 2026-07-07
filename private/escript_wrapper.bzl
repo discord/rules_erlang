@@ -1,7 +1,7 @@
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
     "version_file",
 )
 
@@ -11,14 +11,14 @@ def _impl(ctx):
     script = """#!/usr/bin/env bash
 set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 exec \\
     env ERLANG_HOME="{erlang_home}" \\
         VERSION_FILE="{version_file}" \\
     "{erlang_home}"/bin/escript "{escript}" $@
 """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
+        erl_rootdir_setup = erl_rootdir_setup(ctx, runfiles = True),
         erlang_home = erlang_home,
         version_file = version_file(ctx).short_path,
         escript = ctx.file.escript.short_path,

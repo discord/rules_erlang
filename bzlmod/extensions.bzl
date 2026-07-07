@@ -14,10 +14,12 @@ load(
     "//:rules_erlang.bzl",
     "xref_runner_sources",
 )
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load(
     "//repositories:erlang_config.bzl",
     "INSTALLATION_TYPE_EXTERNAL",
     "INSTALLATION_TYPE_INTERNAL",
+    "INSTALLATION_TYPE_PREBUILT",
     _erlang_config_rule = "erlang_config",
 )
 load(
@@ -54,6 +56,7 @@ def _erlang_config(ctx):
     cc_toolchain_filess = {}
     cc_sysroot_filess = {}
     cc_configure_envss = {}
+    prebuilt_archive_labels = {}
     owners_by_name = {}
 
     for mod in ctx.modules:
@@ -149,6 +152,41 @@ def _erlang_config(ctx):
                 cc_configure_envss[erlang.name] = erlang.cc_configure_env
             owners_by_name[erlang.name] = mod
 
+        for erlang in mod.tags.erlang_from_prebuilt_tarball:
+            if erlang.name in types:
+                fail("{} declares an erlang installation named {}, but the name is already used by {}".format(
+                    mod.name,
+                    erlang.name,
+                    owners_by_name[erlang.name].name,
+                ))
+
+            # Prebuilt OTP is architecture-specific (it contains a compiled BEAM
+            # emulator + NIFs), so the constraints are mandatory: without them
+            # Bazel could resolve a wrong-arch toolchain and fail deep inside a
+            # compile action with "exec format error".
+            if not erlang.target_compatible_with:
+                fail("erlang_from_prebuilt_tarball '{}' must set target_compatible_with (prebuilt OTP is architecture-specific)".format(erlang.name))
+            if not erlang.exec_compatible_with:
+                fail("erlang_from_prebuilt_tarball '{}' must set exec_compatible_with (prebuilt OTP is architecture-specific)".format(erlang.name))
+
+            # Fetch the tarball into its own repo (hermetic, sha256-verified).
+            # erlang_release_archive (referenced from BUILD_prebuilt.tpl) extracts
+            # it. The apparent label resolves automatically because both repos are
+            # created by this same extension.
+            archive_repo = "otp_{}_prebuilt_archive".format(erlang.name)
+            http_file(
+                name = archive_repo,
+                urls = [erlang.url],
+                sha256 = erlang.sha256,
+            )
+
+            types[erlang.name] = INSTALLATION_TYPE_PREBUILT
+            versions[erlang.name] = erlang.version
+            prebuilt_archive_labels[erlang.name] = "@{}//file".format(archive_repo)
+            extra_target_constraintss[erlang.name] = [str(l) for l in erlang.target_compatible_with]
+            extra_exec_constraintss[erlang.name] = [str(l) for l in erlang.exec_compatible_with]
+            owners_by_name[erlang.name] = mod
+
     _erlang_config_rule(
         name = "erlang_config",
         rules_erlang_workspace = "@rules_erlang",
@@ -171,6 +209,7 @@ def _erlang_config(ctx):
         cc_toolchain_filess = cc_toolchain_filess,
         cc_sysroot_filess = cc_sysroot_filess,
         cc_configure_envss = cc_configure_envss,
+        prebuilt_archive_labels = prebuilt_archive_labels,
     )
 
 # Documenting for future me, as these tend to be confusing:
@@ -259,12 +298,37 @@ internal_erlang_from_github_release = tag_class(attrs = {
     ),
 })
 
+# Provide a toolchain from a prebuilt, relocatable OTP release tarball (e.g. one
+# produced by `bazel build //...:otp-<name>_build` and stashed in GCS/artifact
+# storage). The tarball is fetched via http_file and extracted by
+# erlang_release_archive -- no compilation. Because a prebuilt is
+# architecture-specific, target_compatible_with and exec_compatible_with are
+# mandatory.
+erlang_from_prebuilt_tarball = tag_class(attrs = {
+    "name": attr.string(mandatory = True),
+    "version": attr.string(mandatory = True),
+    "url": attr.string(
+        mandatory = True,
+        doc = "URL of a relocatable OTP release tarball (as produced by an " +
+              "erlang_build target, i.e. //...:otp-<name>_build).",
+    ),
+    "sha256": attr.string(),
+    "target_compatible_with": attr.label_list(
+        doc = "MANDATORY. The architecture/OS the prebuilt targets " +
+              "(e.g. @platforms//cpu:aarch64). Prebuilt OTP is arch-specific.",
+    ),
+    "exec_compatible_with": attr.label_list(
+        doc = "MANDATORY. Execution-platform constraints for this toolchain.",
+    ),
+})
+
 erlang_config = module_extension(
     implementation = _erlang_config,
     tag_classes = {
         "external_erlang_from_path": external_erlang_from_path,
         "internal_erlang_from_http_archive": internal_erlang_from_http_archive,
         "internal_erlang_from_github_release": internal_erlang_from_github_release,
+        "erlang_from_prebuilt_tarball": erlang_from_prebuilt_tarball,
     },
 )
 

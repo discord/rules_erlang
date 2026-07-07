@@ -14,7 +14,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 ErlangReleaseInfo = provider(
@@ -109,7 +109,7 @@ def _impl(ctx):
     # Create the shell script to run the build_release tool
     script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 # Set up ERL_LIBS to include OTP libraries so build_release.erl can find them
 export ERL_LIBS="{erlang_home}/lib"
@@ -148,7 +148,7 @@ if [[ ! -f "{boot_file}" ]]; then
     exit 1
 fi
 """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        erl_rootdir_setup = erl_rootdir_setup(ctx),
         erlang_home = erlang_home,
         build_release = build_release_path,
         app_name = app_name,

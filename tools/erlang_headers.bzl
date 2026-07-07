@@ -3,7 +3,7 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load(
     ":erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 
@@ -24,7 +24,7 @@ def _erlang_headers_impl(ctx):
     commands = [
         "set -euo pipefail",
         "",
-        maybe_install_erlang(ctx),
+        erl_rootdir_setup(ctx),
         "",
     ]
 
@@ -33,7 +33,7 @@ def _erlang_headers_impl(ctx):
     outs = []
     for f in ctx.attr.filenames:
         dest = ctx.actions.declare_file(path_join(ctx.label.name, f))
-        commands.append("cp '{erlang_home}'/usr/include/{f} {dest}".format(
+        commands.append("cp \"{erlang_home}\"/usr/include/{f} {dest}".format(
             erlang_home = erlang_home,
             f = f,
             dest = dest.path,

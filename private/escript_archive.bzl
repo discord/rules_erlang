@@ -10,7 +10,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 load(
     ":util.bzl",
@@ -76,7 +76,7 @@ def _impl(ctx):
 
     script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 "{erlang_home}"/bin/erl \\
     -noshell \\
@@ -111,7 +111,7 @@ ok = escript:create("{output}",
 halt().
 '
 """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        erl_rootdir_setup = erl_rootdir_setup(ctx),
         erlang_home = erlang_home,
         contents_dir = contents_dir.path,
         flat = str(ctx.attr.flat).lower(),

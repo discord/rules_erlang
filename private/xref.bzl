@@ -13,7 +13,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def _impl(ctx):
@@ -55,7 +55,7 @@ def _impl(ctx):
 #!/usr/bin/env bash
 set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 export HOME=${{TEST_TMPDIR}}
 
@@ -67,7 +67,7 @@ set -x
 "{erlang_home}"/bin/escript {xrefr} \\
     --config {config_path}
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
+            erl_rootdir_setup = erl_rootdir_setup(ctx, runfiles = True),
             erlang_home = erlang_home,
             xrefr = xrefr_path,
             config_path = config_file.short_path,

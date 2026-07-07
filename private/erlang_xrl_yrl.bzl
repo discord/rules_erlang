@@ -4,7 +4,7 @@ load(":util.bzl", "erl_libs_contents")
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def unique_dirnames(files):
@@ -35,7 +35,7 @@ def _impl(ctx):
 
     script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 mkdir -p {out_dir}
 
@@ -43,7 +43,7 @@ mkdir -p {out_dir}
     -o "{out_dir}" \\
     "$@"
     """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        erl_rootdir_setup = erl_rootdir_setup(ctx),
         erlang_home = erlang_home,
         out_dir = out_dir,
     )

@@ -7,7 +7,7 @@ load(
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def _impl(ctx):
@@ -30,7 +30,7 @@ def _impl(ctx):
     if len(ctx.files.app_src) == 1:
         script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 mods=()
 module_paths={modules}
@@ -62,7 +62,7 @@ $mods_term.
 EOF
 
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx),
+            erl_rootdir_setup = erl_rootdir_setup(ctx),
             erlang_home = erlang_home,
             app_file_tool = app_file_tool_path,
             modules = modules,
@@ -116,7 +116,7 @@ EOF
 
         script = """set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 echo "{{application,'{name}',[{{registered, []}},{{env, []}}]}}." > {out}
 
@@ -235,7 +235,7 @@ if [ -n '{extra_keys}' ]; then
 EOF
 fi
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx),
+            erl_rootdir_setup = erl_rootdir_setup(ctx),
             erlang_home = erlang_home,
             app_file_tool = app_file_tool_path,
             info_file = ctx.info_file.path,

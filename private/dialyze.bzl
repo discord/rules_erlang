@@ -1,7 +1,7 @@
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 load("//:erlang_app_info.bzl", "ErlangAppInfo")
 load("//:util.bzl", "path_join", "windows_path")
@@ -46,7 +46,7 @@ def _impl(ctx):
 #!/usr/bin/env bash
 set -euo pipefail
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 export HOME=${{TEST_TMPDIR}}
 
@@ -59,7 +59,7 @@ set -x
     {plt_args} \\
     -r {dirs} {opts}{check_warnings}
 """.format(
-            maybe_install_erlang = maybe_install_erlang(ctx, short_path = True),
+            erl_rootdir_setup = erl_rootdir_setup(ctx, runfiles = True),
             erlang_home = erlang_home,
             erl_libs_path = erl_libs_path,
             apps_args = apps_args,

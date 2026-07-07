@@ -4,7 +4,7 @@ load(":util.bzl", "erl_libs_contents")
 load(
     "//tools:erlang_toolchain.bzl",
     "erlang_dirs",
-    "maybe_install_erlang",
+    "erl_rootdir_setup",
 )
 
 def unique_dirnames(files):
@@ -43,7 +43,7 @@ TMP=$(mktemp -d || mktemp -d -t bazel-tmp)
 test -d "$TMP"
 trap "rm -fr '$TMP'" EXIT
 
-{maybe_install_erlang}
+{erl_rootdir_setup}
 
 mkdir -p {out_dirs}
 
@@ -88,7 +88,7 @@ for F in {out_files} ; do
     mv -v "$SRC" "$F"
 done
     """.format(
-        maybe_install_erlang = maybe_install_erlang(ctx),
+        erl_rootdir_setup = erl_rootdir_setup(ctx),
         erlang_home = erlang_home,
         out_dirs = " ".join(unique_dirnames(outputs)),
         out_files = " ".join([f.path for f in outputs]),

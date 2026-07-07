@@ -2,7 +2,6 @@
 
 load(
     "%{RULES_ERLANG_WORKSPACE}//private:erlang_build.bzl",
-    "erlang_build",
     "erlang_release_archive",
 )
 load(
@@ -10,34 +9,11 @@ load(
     "erlang_toolchain",
 )
 
-# erlang_build produces only the relocatable release tarball. Build
-# the `otp-%{ERLANG_NAME}_build` target directly to stash a prebuilt
-# for reuse.
-erlang_build(
-    name = "otp-%{ERLANG_NAME}_build",
-    version = "%{ERLANG_VERSION}",
-    url = "%{URL}",
-    strip_prefix = "%{STRIP_PREFIX}",
-    sha256v = "%{SHA_256}",
-    pre_configure_cmds = %{PRE_CONFIGURE_CMDS},
-    extra_configure_opts = %{EXTRA_CONFIGURE_OPTS},
-    post_configure_cmds = %{POST_CONFIGURE_CMDS},
-    extra_make_opts = %{EXTRA_MAKE_OPTS},
-    host_triplet = "%{HOST_TRIPLET}",
-    build_triplet = "%{BUILD_TRIPLET}",
-    sysroot = "%{SYSROOT}",
-    bootstrap_otp = %{BOOTSTRAP_OTP},
-    cc_toolchain_files = %{CC_TOOLCHAIN_FILES},
-    cc_sysroot_files = %{CC_SYSROOT_FILES},
-    cc_configure_env = %{CC_CONFIGURE_ENV},
-    visibility = ["//visibility:public"],
-)
-
-# Extract the tarball into the tree artifact + OtpInfo the toolchain consumes.
-# bootstrap_otp references (and erts_layer) point at this target.
+# Extract a prebuilt, relocatable OTP release tarball (fetched via http_file)
+# into the tree artifact + OtpInfo the toolchain consumes. No compilation.
 erlang_release_archive(
     name = "otp-%{ERLANG_NAME}",
-    tar = ":otp-%{ERLANG_NAME}_build",
+    tar = "%{PREBUILT_ARCHIVE_LABEL}",
     version = "%{ERLANG_VERSION}",
     visibility = ["//visibility:public"],
 )
@@ -48,10 +24,13 @@ erlang_toolchain(
     visibility = ["//visibility:public"],
 )
 
+# A prebuilt is architecture-specific, so exec/target constraints are mandatory
+# (enforced in the module extension). The exec platform must declare
+# //:erlang_prebuilt (mirroring how internal toolchains require //:erlang_internal).
 toolchain(
     name = "toolchain_major",
     exec_compatible_with = [
-        "//:erlang_internal",
+        "//:erlang_prebuilt",
 %{EXTRA_EXEC_CONSTRAINTS}    ],
     target_compatible_with = [
         "//:erlang_%{ERLANG_MAJOR}",
@@ -70,7 +49,7 @@ alias(
 toolchain(
     name = "toolchain_major_minor",
     exec_compatible_with = [
-        "//:erlang_internal",
+        "//:erlang_prebuilt",
 %{EXTRA_EXEC_CONSTRAINTS}    ],
     target_compatible_with = [
         "//:erlang_%{ERLANG_MAJOR}_%{ERLANG_MINOR}",
