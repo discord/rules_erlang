@@ -75,7 +75,7 @@ def _erlang_build_impl(ctx):
     # erlang_build produces only the relocatable release tarball.
     # erlang_release_archive turns a tarball (built here, or fetched as a
     # prebuilt) into the tree artifact + OtpInfo the toolchain consumes.
-    release_tar = ctx.actions.declare_file(ctx.label.name + "_release.tar")
+    release_tar = ctx.actions.declare_file(ctx.label.name + "_release.tar.gz")
 
     extra_configure_opts = " ".join(ctx.attr.extra_configure_opts)
     pre_configure_cmds = "\n".join(ctx.attr.pre_configure_cmds)
@@ -211,9 +211,11 @@ echo "    Install script finished"
 # from any tarball, then create the relocatable release tarball. tar -h
 # dereferences the lone internal bin/epmd symlink into a plain file (so the
 # extracted tree has no symlinks -> robust on remote execution) while
-# preserving executable bits.
+# preserving executable bits. Pipe through `gzip -n` (rather than tar's -z)
+# so the gzip header carries no mtime/filename -- keeps the archive bytes
+# (and therefore its sha256) deterministic across rebuilds.
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf "$ABS_RELEASE_TAR" {release_excludes} .\
+tar -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
 """.format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
     else:
         # We pass -cross even for native builds because the Install script
@@ -232,9 +234,11 @@ echo "    Install script finished"
 # from any tarball, then create the relocatable release tarball. tar -h
 # dereferences the lone internal bin/epmd symlink into a plain file (so the
 # extracted tree has no symlinks -> robust on remote execution) while
-# preserving executable bits.
+# preserving executable bits. Pipe through `gzip -n` (rather than tar's -z)
+# so the gzip header carries no mtime/filename -- keeps the archive bytes
+# (and therefore its sha256) deterministic across rebuilds.
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf "$ABS_RELEASE_TAR" {release_excludes} .\
+tar -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
 """.format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
 
     ctx.actions.run_shell(
