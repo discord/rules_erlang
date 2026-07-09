@@ -43,7 +43,15 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 mkdir -p "$WORK_DIR{install_prefix}"
-tar -C "$ABS_RELEASE_DIR" -cf - . | tar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
+
+# This is a little obtuse, but it's the most reliable to do what we need.
+#  - the initial archiving to stdout resolves the symlinks, so we don't persist broken links
+#  - the initial un-archive to the work dir allows us to:
+#    - set the expected prefix (/opt/erlang)
+#    - remove the initial owner, so that we don't copy locally-specific UIDs into the archive
+#  - then, the final compression creates the actual desired artifact
+# TODO(denbeigh): it would be nice to find a way to do this that is less roundabout.
+tar -C "$ABS_RELEASE_DIR" -chf - . | tar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
 tar -cf "$ABS_OUTPUT_TAR" -C "$WORK_DIR" .{install_prefix}
 
 """.format(
