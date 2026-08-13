@@ -1,5 +1,7 @@
 load(":util.bzl", "path_join")
 
+# TODO(denbeigh): this should all be ripped out when we drop support for
+# OTP<25 (versions without a relocatable installation directory)
 def _impl(ctx):
     outputs = [
         ctx.actions.declare_file(f.name)
@@ -22,6 +24,7 @@ def _impl(ctx):
         outputs = outputs,
         inputs = ctx.files.archive,
         executable = "tar",
+        mnemonic = "ErlUntar",
         arguments = [args],
     )
 

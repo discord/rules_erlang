@@ -69,6 +69,7 @@ def _impl(ctx):
     ctx.actions.run_shell(
         inputs = entries.values(),
         outputs = [contents_dir],
+        mnemonic = "ErlangEscriptArchivePopulate",
         command = "\n".join(commands),
     )
 
@@ -127,6 +128,7 @@ halt().
     ctx.actions.run_shell(
         inputs = inputs,
         outputs = [output],
+        mnemonic = "ErlangEscriptArchiveCreate",
         command = script,
     )
 

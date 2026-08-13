@@ -38,6 +38,7 @@ export OUTS="{outs}"
         inputs = inputs,
         outputs = outs,
         command = script,
+        mnemonic = "ErlEval",
         arguments = [ctx.attr.expression],
     )
 

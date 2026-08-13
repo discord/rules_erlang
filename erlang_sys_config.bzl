@@ -24,6 +24,7 @@ def _erlang_sys_config_impl(ctx):
         ctx.actions.run_shell(
             inputs = [ctx.file.config_file],
             outputs = [output_file],
+            mnemonic = "ErlangSysConfig",
             command = "cp {} {}".format(ctx.file.config_file.path, output_file.path),
         )
     else:

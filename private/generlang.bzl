@@ -59,6 +59,7 @@ export PATH="{erlang_home}"/bin:${{PATH}}
     ctx.actions.run_shell(
         inputs = inputs,
         outputs = outs,
+        mnemonic = "ErlangGenErlang",
         command = script,
     )
 

@@ -37,6 +37,7 @@ halt().
     ctx.actions.run_shell(
         inputs = inputs,
         outputs = [out],
+        mnemonic = "EscriptFlat",
         command = """set -euo pipefail
 
 {erl_rootdir_setup}

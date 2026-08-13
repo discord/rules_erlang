@@ -51,6 +51,7 @@ def _erlang_headers_impl(ctx):
     ctx.actions.run_shell(
         inputs = runfiles.files,
         outputs = outs,
+        mnemonic = "ErlangHeaders",
         command = "\n".join(commands),
     )
 

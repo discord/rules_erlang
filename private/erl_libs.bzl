@@ -28,6 +28,7 @@ def _impl(ctx):
                 ctx.actions.run_shell(
                     inputs = [b],
                     outputs = [dest],
+                    mnemonic = "ErlLibsCopy",
                     command = "cp -RL \"{}\"/* \"{}\"".format(b.path, dest.path),
                 )
             else:
