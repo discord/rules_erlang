@@ -46,6 +46,15 @@ external erlang is used""",
 # <ERL_ROOT> (erts/etc/unix/Install.src).
 _INSTALL_PREFIX = "/tmp/bazel/erlang"
 
+# The build directory path ends up inside OTP's own outputs, so it has to be
+# a constant -- a `mktemp -d` here made 45 of 1682 files differ between two
+# builds of the same target. -ffile-prefix-map cannot fix it:
+# erts/emulator/Makefile.in:578 compiles the whole CFLAGS string into
+# beam.smp .rodata to serve erlang:system_info(compile_info), so the flag
+# would only record itself. DWARF comp_dir and megaco's two locally
+# recompiled flex-scanner beams leak the path too.
+_BUILD_ROOT_PREFIX = "/tmp/rules_erlang_build"
+
 # OTP's release_spec rules always copy src/ (see e.g.
 # lib/stdlib/src/Makefile's release_spec target) with no build-time flag to
 # skip it, so we strip it (and other unused-at-runtime dirs) here instead.
@@ -85,6 +94,17 @@ def _erlang_build_impl(ctx):
     install_path = path_join(_INSTALL_PREFIX, ctx.label.name)
 
     is_cross = ctx.attr.host_triplet != ""
+
+    # Keyed on what makes this a distinct OTP build, so a machine can hold
+    # several of them at once. Deliberately not keyed on anything
+    # checkout-specific (execroot, output base) -- that is the variance we
+    # are removing.
+    build_root_key = "-".join([
+        ctx.label.name,
+        ctx.attr.version,
+        ctx.attr.host_triplet if is_cross else "native",
+    ]).replace("/", "_")
+    build_root = path_join(_BUILD_ROOT_PREFIX, build_root_key)
 
     if is_cross and not ctx.attr.bootstrap_otp:
         fail("bootstrap_otp is required when cross-compiling (host_triplet is set)")
@@ -268,8 +288,25 @@ ABS_RELEASE_TAR=$PWD/{release_tar_path}
 ABS_LOG=$PWD/{build_log}
 EXECROOT=$PWD
 
-ABS_BUILD_DIR="$(mktemp -d)"
-ABS_DEST_DIR="$(mktemp -d)"
+# The fixed path is the price of reproducibility (see _BUILD_ROOT_PREFIX).
+# Two builds of this target at once on an unsandboxed machine would share it,
+# so the lock turns that into a loud error instead of two makes in one tree.
+# The rm -rf is the other half: we always start empty, so a run that died
+# mid-build can never be silently resumed. Bazel never cleans /tmp, so we
+# remove the tree on the way out too; it is still captured in {build_path}.
+BUILD_ROOT="{build_root}"
+BUILD_LOCK="$BUILD_ROOT.lock"
+mkdir -p "{build_root_prefix}"
+if ! mkdir "$BUILD_LOCK" 2>/dev/null; then
+    echo "ERROR: $BUILD_ROOT is already in use by another build."
+    echo "       If no other build is running, remove $BUILD_LOCK and retry."
+    exit 1
+fi
+trap 'rm -rf "$BUILD_ROOT" "$BUILD_LOCK"' EXIT
+rm -rf "$BUILD_ROOT"
+ABS_BUILD_DIR="$BUILD_ROOT/build"
+ABS_DEST_DIR="$BUILD_ROOT/dest"
+mkdir -p "$ABS_BUILD_DIR" "$ABS_DEST_DIR"
 
 {bootstrap_setup}
 {cc_setup}
@@ -291,6 +328,9 @@ catch() {{
         --file "$ABS_BUILD_DIR_TAR" \\
         *
     echo "    build log: {build_log}"
+    # This trap replaced the one that held the cleanup, so redo it here.
+    cd /
+    rm -rf "$BUILD_ROOT" "$BUILD_LOCK"
 }}
 
 cd "$ABS_BUILD_DIR"
@@ -320,6 +360,8 @@ fi
             strip_prefix = strip_prefix,
             build_path = build_dir_tar.path,
             release_tar_path = release_tar.path,
+            build_root = build_root,
+            build_root_prefix = _BUILD_ROOT_PREFIX,
             install_path = install_path,
             build_log = build_log.path,
             begins_with_fun = BEGINS_WITH_FUN,
