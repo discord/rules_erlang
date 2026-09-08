@@ -199,12 +199,20 @@ fi\
     # sets ERL_ROOT to $PWD (the release dir) and uses the argument
     # only as the target path baked into boot scripts.
     install_cmds = """\
-${{MAKE}} release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
+${{MAKE}} -j1 release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
 echo "    make release finished"
 
 cd "$ABS_DEST_DIR"
 ./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
 echo "    Install script finished"
+
+# make/otp_released_app.mk does an unlocked read-modify-append here, so a
+# parallel release step could reorder, drop or duplicate an entry. -j1
+# above keeps that from ever being possible; this keeps the order stable
+# even if someone hands the release step a -j anyway.
+for f in releases/*/installed_application_versions; do
+    LC_ALL=C sort -o "$f" "$f"
+done
 
 # Embed OTP_VERSION at the release root so erlang_release_archive can read it
 # from any tarball, then create the relocatable release tarball. Every flag
