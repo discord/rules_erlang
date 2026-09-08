@@ -25,13 +25,12 @@ OtpInfo = provider(
 May be a prefix of the exact version found in the version_file.""",
         "release_dir": """A tree artifact (declare_directory) containing a
 relocatable Erlang/OTP release (bin/, lib/, erts-*/, releases/). None for
-external installations. OTP 25+ installs are relocatable, so consumers export
-ERL_ROOTDIR to this directory's absolute path before invoking erl; see
-erl_rootdir_setup().""",
-        "erlang_home": """For external installations, the absolute path to the
-erlang installation. None for relocatable (internal/prebuilt) installations --
-their absolute path isn't known until runfiles/execroot are materialized, so
-consumers derive the template prefix via erlang_home() in
+host (external) installations. Consumers export ERL_ROOTDIR to this
+directory's absolute path before invoking erl; see erl_rootdir_setup().""",
+        "erlang_home": """For host (external) installations, the absolute path
+to the erlang installation. None for relocatable (internal/prebuilt)
+installations -- their absolute path isn't known until runfiles/execroot are
+materialized, so consumers derive the template prefix via erlang_home() in
 tools/erlang_toolchain.bzl (which returns "$ERL_ROOTDIR", valid only after
 erl_rootdir_setup() has exported it).""",
         "version_file": """A file containing the version of this
@@ -40,7 +39,12 @@ external erlang is used""",
     },
 )
 
-DEFAULT_INSTALL_PREFIX = "/tmp/bazel/erlang"
+# ./configure --prefix and ./Install bake this into the boot scripts as the
+# default ROOTDIR, but nothing is ever installed here -- the release is
+# relocatable and $ERL_ROOTDIR wins at runtime (see erl_rootdir_setup()). It
+# only has to stay absolute, because OTP's Install rejects a relative
+# <ERL_ROOT> (erts/etc/unix/Install.src).
+_INSTALL_PREFIX = "/tmp/bazel/erlang"
 
 # OTP's release_spec rules always copy src/ (see e.g.
 # lib/stdlib/src/Makefile's release_spec target) with no build-time flag to
@@ -61,10 +65,6 @@ RELEASE_TAR_EXCLUDES = " ".join([
     for pattern in RELEASE_TAR_EXCLUDED_PATTERNS
 ])
 
-def _install_root(install_prefix):
-    (root_dir, _, _) = install_prefix.removeprefix("/").partition("/")
-    return "/" + root_dir
-
 def _erlang_build_impl(ctx):
     (_, _, filename) = ctx.attr.url.rpartition("/")
     downloaded_archive = ctx.actions.declare_file(filename)
@@ -82,12 +82,7 @@ def _erlang_build_impl(ctx):
     post_configure_cmds = "\n".join(ctx.attr.post_configure_cmds)
     extra_make_opts = " ".join(ctx.attr.extra_make_opts)
 
-    if not ctx.attr.install_prefix.startswith("/"):
-        # otp installations are not relocatable, so the install_prefix
-        # must be absolute to build a predictable location
-        fail("install_prefix must be absolute")
-    install_path = path_join(ctx.attr.install_prefix, ctx.label.name)
-    install_root = _install_root(ctx.attr.install_prefix)
+    install_path = path_join(_INSTALL_PREFIX, ctx.label.name)
 
     is_cross = ctx.attr.host_triplet != ""
 
@@ -198,31 +193,12 @@ fi\
     # cross-compiling. The alternative (`make install`) nests everything
     # under lib/erlang/ which requires different erlang_home handling
     # and complicates erlang_headers.bzl and erlang_erts_layer.bzl.
-    if is_cross:
-        install_cmds = """\
-${{MAKE}} release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
-echo "    make release finished"
-
-cd "$ABS_DEST_DIR"
-./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
-echo "    Install script finished"
-
-# Embed OTP_VERSION at the release root so erlang_release_archive can read it
-# from any tarball, then create the relocatable release tarball. tar -h
-# dereferences the lone internal bin/epmd symlink into a plain file (so the
-# extracted tree has no symlinks -> robust on remote execution) while
-# preserving executable bits. Pipe through `gzip -n` (rather than tar's -z)
-# so the gzip header carries no mtime/filename -- keeps the archive bytes
-# (and therefore its sha256) deterministic across rebuilds.
-cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
-""".format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
-    else:
-        # We pass -cross even for native builds because the Install script
-        # checks that ERL_ROOT is an existing directory. With -cross, it
-        # sets ERL_ROOT to $PWD (the release dir) and uses the argument
-        # only as the target path baked into boot scripts.
-        install_cmds = """\
+    #
+    # We pass -cross even for native builds because the Install script
+    # checks that ERL_ROOT is an existing directory. With -cross, it
+    # sets ERL_ROOT to $PWD (the release dir) and uses the argument
+    # only as the target path baked into boot scripts.
+    install_cmds = """\
 ${{MAKE}} release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
 echo "    make release finished"
 
@@ -315,7 +291,6 @@ fi
             build_path = build_dir_tar.path,
             release_tar_path = release_tar.path,
             install_path = install_path,
-            install_root = install_root,
             build_log = build_log.path,
             begins_with_fun = BEGINS_WITH_FUN,
             erlang_version = ctx.attr.version,
@@ -350,7 +325,6 @@ erlang_build = rule(
         "url": attr.string(mandatory = True),
         "strip_prefix": attr.string(),
         "sha256v": attr.string(),
-        "install_prefix": attr.string(default = DEFAULT_INSTALL_PREFIX),
         "pre_configure_cmds": attr.string_list(),
         "extra_configure_opts": attr.string_list(),
         "post_configure_cmds": attr.string_list(),

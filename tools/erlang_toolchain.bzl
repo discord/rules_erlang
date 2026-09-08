@@ -62,9 +62,9 @@ def erlang_home(otpinfo):
     if otpinfo.release_dir != None:
         return "$ERL_ROOTDIR"
     if otpinfo.erlang_home == None:
-        fail("OtpInfo.erlang_home is None for a non-relocatable (external) " +
-             "install. External installs must carry an absolute path; this " +
-             "OtpInfo is malformed.")
+        fail("OtpInfo.erlang_home is None for a host (external) install. " +
+             "Host installs must carry an absolute path; this OtpInfo is " +
+             "malformed.")
     return otpinfo.erlang_home
 
 def otp_runfiles(ctx, otpinfo):
