@@ -207,14 +207,36 @@ cd "$ABS_DEST_DIR"
 echo "    Install script finished"
 
 # Embed OTP_VERSION at the release root so erlang_release_archive can read it
-# from any tarball, then create the relocatable release tarball. tar -h
-# dereferences the lone internal bin/epmd symlink into a plain file (so the
-# extracted tree has no symlinks -> robust on remote execution) while
-# preserving executable bits. Pipe through `gzip -n` (rather than tar's -z)
-# so the gzip header carries no mtime/filename -- keeps the archive bytes
-# (and therefore its sha256) deterministic across rebuilds.
+# from any tarball, then create the relocatable release tarball. Every flag
+# on the tar line is there so the same source gives the same sha256 on any
+# worker, not just on the one that happened to build it first.
+#
+# -h dereferences the lone internal bin/epmd symlink (OTP's Install.src does
+# `ln -s ../erts-*/bin/epmd epmd`) and preserves executable bits. On its own
+# it is not enough: tar spots the shared inode and writes a hard link member
+# instead of a second copy, pointing whichever way the traversal went.
+# --hard-dereference makes both plain files, for +0.06% gzipped.
+# --sort=name replaces raw readdir order. ext4 seeds its dirname hash per
+# filesystem, so that order is stable on one box and drifts across a fleet.
+# --mtime, --owner, --group and --numeric-owner zero the wall clock and the
+# builder's uid/gid/uname out of every header.
+# --format=gnu pins what is only a compile-time default -- see
+# `tar --show-defaults`.
+# gzip -n (rather than tar's -z) keeps mtime and filename out of the gzip
+# header. Background: https://reproducible-builds.org/docs/archives/
+#
+# These are all GNU tar flags, but so is the --transform on the extract
+# step, so bsdtar was never an option here. --sort=name does raise the
+# floor to GNU tar 1.28 (2014).
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
+tar --sort=name \\
+    --mtime=@0 \\
+    --owner=0 \\
+    --group=0 \\
+    --numeric-owner \\
+    --hard-dereference \\
+    --format=gnu \\
+    -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
 """.format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
 
     ctx.actions.run_shell(
