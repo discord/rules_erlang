@@ -6,6 +6,13 @@ load(
     "//private:erlang_build.bzl",
     "OtpInfo",
 )
+load(
+    "//private:hermetic_tar.bzl",
+    "TAR_TOOLCHAIN_TYPE",
+    "archive_cmds",
+    "bsdtar_setup",
+    "mtree_cmds",
+)
 
 ErtsLayerInfo = provider(
     doc = "Information about an ERTS layer tar file",
@@ -31,6 +38,9 @@ def _erlang_erts_layer_impl(ctx):
     # ERL_ROOTDIR=/opt/erlang).
     install_prefix = "/opt/erlang"
 
+    tar_toolchain = ctx.toolchains[TAR_TOOLCHAIN_TYPE]
+    bsdtar = tar_toolchain.tarinfo.binary
+
     ctx.actions.run_shell(
         inputs = [otp_info.release_dir],
         outputs = [output_tar],
@@ -39,18 +49,39 @@ def _erlang_erts_layer_impl(ctx):
 ABS_RELEASE_DIR="$PWD/{release_dir}"
 ABS_OUTPUT_TAR="$PWD/{output_tar}"
 
+{bsdtar_setup}
+
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
+# The manifest below records the mode of every member, and both the mkdir
+# and the extract below take their modes from the action's umask. Bazel does
+# not set one, so without this line a worker that runs with anything other
+# than 022 writes a different layer for the same OTP.
+umask 022
+
 mkdir -p "$WORK_DIR{install_prefix}"
-tar -C "$ABS_RELEASE_DIR" -cf - . | tar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
-tar -cf "$ABS_OUTPUT_TAR" -C "$WORK_DIR" .{install_prefix}
+bsdtar -C "$ABS_RELEASE_DIR" -cf - . | bsdtar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
+
+# The layer used to come straight out of `tar -cf`, which copies the wall
+# clock and the builder's uid into every header, so two builds of the same
+# OTP gave two different layer digests and every image that held one rebuilt.
+# The manifest lands in $WORK_DIR, one level above the prefix we archive, so
+# it stays out of the layer.
+cd "$WORK_DIR"
+{mtree_cmds}
+{archive_cmds} > "$ABS_OUTPUT_TAR"
 
 """.format(
             release_dir = otp_info.release_dir.path,
             output_tar = output_tar.path,
             install_prefix = install_prefix,
+            bsdtar_setup = bsdtar_setup(tar_toolchain, bsdtar.path),
+            mtree_cmds = mtree_cmds(".{}".format(install_prefix), "$WORK_DIR/layer.mtree"),
+            archive_cmds = archive_cmds("$WORK_DIR/layer.mtree"),
         ),
+        tools = tar_toolchain.default.files,
+        toolchain = TAR_TOOLCHAIN_TYPE,
         mnemonic = "ErtsLayer",
         progress_message = "Creating ERTS layer tar for {}".format(ctx.label.name),
     )
@@ -68,6 +99,7 @@ tar -cf "$ABS_OUTPUT_TAR" -C "$WORK_DIR" .{install_prefix}
 
 erlang_erts_layer = rule(
     implementation = _erlang_erts_layer_impl,
+    toolchains = [TAR_TOOLCHAIN_TYPE],
     attrs = {
         "otp": attr.label(
             mandatory = True,
