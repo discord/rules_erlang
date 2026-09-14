@@ -1,11 +1,11 @@
 load(
+    "@bazel_skylib//rules:common_settings.bzl",
+    "BuildSettingInfo",
+)
+load(
     "@bazel_tools//tools/build_defs/hash:hash.bzl",
     "sha256",
     "tools",
-)
-load(
-    "@bazel_skylib//rules:common_settings.bzl",
-    "BuildSettingInfo",
 )
 load(
     "//:util.bzl",
@@ -190,6 +190,7 @@ fi\
     # Build the bootstrap setup commands
     bootstrap_setup = ""
     bootstrap_inputs = []
+
     # cfg transitions turn attr.label into a list; unwrap it.
     bootstrap_otp = ctx.attr.bootstrap_otp[0] if ctx.attr.bootstrap_otp else None
     if bootstrap_otp != None:
