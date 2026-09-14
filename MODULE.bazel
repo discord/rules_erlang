@@ -14,6 +14,16 @@ bazel_dep(
     version = "0.2.17"
 )
 
+# The producer rules archive through this module's bsdtar rather than through
+# whatever `tar` the action PATH happens to hold, because a Mac holds bsdtar
+# 3.7.4 there and that build rejects the GNU flags. Keep the version at
+# 0.10.5: the monorepo already selects 0.10.5, so a higher request here moves
+# its lock for no gain.
+bazel_dep(
+    name = "tar.bzl",
+    version = "0.10.5",
+)
+
 erlang_package = use_extension(
     "//bzlmod:extensions.bzl",
     "erlang_package",

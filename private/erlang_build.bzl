@@ -14,6 +14,13 @@ load(
     "path_join",
 )
 load(
+    "//private:hermetic_tar.bzl",
+    "TAR_TOOLCHAIN_TYPE",
+    "archive_cmds",
+    "bsdtar_setup",
+    "mtree_cmds",
+)
+load(
     "//private:transitions.bzl",
     "platform_independent_transition",
 )
@@ -95,6 +102,9 @@ def _erlang_build_impl(ctx):
 
     is_cross = ctx.attr.host_triplet != ""
 
+    tar_toolchain = ctx.toolchains[TAR_TOOLCHAIN_TYPE]
+    bsdtar = tar_toolchain.tarinfo.binary
+
     # Keyed on what makes this a distinct OTP build, so a machine can hold
     # several of them at once. Deliberately not keyed on anything
     # checkout-specific (execroot, output base) -- that is the variance we
@@ -132,9 +142,12 @@ curl -L "{archive_url}" -o {archive_path}
 
     sha256file = sha256(ctx, downloaded_archive)
 
-    strip_prefix = ctx.attr.strip_prefix
-    if strip_prefix != "":
-        strip_prefix += "\\/"
+    # The tarball erlang_package downloads always has exactly one top-level
+    # directory (otp_src_<version>), so one component is always the right
+    # count. An empty strip_prefix means the caller handed us a flat tarball.
+    # This replaces a GNU `--transform`, which bsdtar has no answer for;
+    # --strip-components works on GNU tar and on bsdtar 3.5.3 or newer.
+    strip_components = "--strip-components=1" if ctx.attr.strip_prefix else ""
 
     # Build the CC toolchain setup commands
     cc_inputs = []
@@ -236,37 +249,32 @@ for f in releases/*/installed_application_versions; do
 done
 
 # Embed OTP_VERSION at the release root so erlang_release_archive can read it
-# from any tarball, then create the relocatable release tarball. Every flag
-# on the tar line is there so the same source gives the same sha256 on any
-# worker, not just on the one that happened to build it first.
+# from any tarball, then create the relocatable release tarball. The two
+# passes are there so the same source gives the same sha256 on any worker,
+# not just on the one that happened to build it first; private/hermetic_tar.bzl
+# says which GNU flag each normalisation replaces.
 #
 # -h dereferences the lone internal bin/epmd symlink (OTP's Install.src does
 # `ln -s ../erts-*/bin/epmd epmd`) and preserves executable bits. On its own
 # it is not enough: tar spots the shared inode and writes a hard link member
-# instead of a second copy, pointing whichever way the traversal went.
-# --hard-dereference makes both plain files, for +0.06% gzipped.
-# --sort=name replaces raw readdir order. ext4 seeds its dirname hash per
-# filesystem, so that order is stable on one box and drifts across a fleet.
-# --mtime, --owner, --group and --numeric-owner zero the wall clock and the
-# builder's uid/gid/uname out of every header.
-# --format=gnu pins what is only a compile-time default -- see
-# `tar --show-defaults`.
+# instead of a second copy, pointing whichever way the traversal went. The
+# nlink=1 in the manifest makes both plain files, for +0.06% gzipped.
 # gzip -n (rather than tar's -z) keeps mtime and filename out of the gzip
 # header. Background: https://reproducible-builds.org/docs/archives/
 #
-# These are all GNU tar flags, but so is the --transform on the extract
-# step, so bsdtar was never an option here. --sort=name does raise the
-# floor to GNU tar 1.28 (2014).
+# The manifest goes to $BUILD_ROOT, not here: anything written under the
+# release root between the two passes ends up in the archive.
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar --sort=name \\
-    --mtime=@0 \\
-    --owner=0 \\
-    --group=0 \\
-    --numeric-owner \\
-    --hard-dereference \\
-    --format=gnu \\
-    -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
-""".format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
+{mtree_cmds}
+{archive_cmds} | gzip -n > "$ABS_RELEASE_TAR"\
+""".format(
+        install_path = install_path,
+        mtree_cmds = mtree_cmds(
+            "-h " + RELEASE_TAR_EXCLUDES + " .",
+            "$BUILD_ROOT/release.mtree",
+        ),
+        archive_cmds = archive_cmds("$BUILD_ROOT/release.mtree"),
+    )
 
     ctx.actions.run_shell(
         inputs = [downloaded_archive, sha256file] + bootstrap_inputs + cc_inputs,
@@ -296,6 +304,8 @@ EXECROOT=$PWD
 # umask 077. erlang_erts_layer.bzl pins 022 too; this is the remaining case.
 umask 022
 
+{bsdtar_setup}
+
 # The fixed path is the price of reproducibility (see _BUILD_ROOT_PREFIX).
 # Two builds of this target at once on an unsandboxed machine would share it,
 # so the lock turns that into a loud error instead of two makes in one tree.
@@ -319,9 +329,9 @@ mkdir -p "$ABS_BUILD_DIR" "$ABS_DEST_DIR"
 {bootstrap_setup}
 {cc_setup}
 
-tar --extract \\
+bsdtar --extract \\
     --no-same-owner \\
-    --transform 's/{strip_prefix}//' \\
+    {strip_components} \\
     --file "{archive_path}" \\
     --directory "$ABS_BUILD_DIR"
 
@@ -332,7 +342,7 @@ catch() {{
     [[ $1 == 0 ]] || tail -n 50 "$ABS_LOG"
     echo "    archiving build dir to: {build_path}"
     cd "$ABS_BUILD_DIR"
-    tar --create \\
+    bsdtar --create \\
         --file "$ABS_BUILD_DIR_TAR" \\
         *
     echo "    build log: {build_log}"
@@ -365,8 +375,9 @@ fi
             sha256 = ctx.attr.sha256v,
             sha256file = sha256file.path,
             archive_path = downloaded_archive.path,
-            strip_prefix = strip_prefix,
+            strip_components = strip_components,
             build_path = build_dir_tar.path,
+            bsdtar_setup = bsdtar_setup(tar_toolchain, bsdtar.path),
             release_tar_path = release_tar.path,
             build_root = build_root,
             build_root_prefix = _BUILD_ROOT_PREFIX,
@@ -384,6 +395,8 @@ fi
             extra_make_opts = extra_make_opts,
             install_cmds = install_cmds,
         ),
+        tools = tar_toolchain.default.files,
+        toolchain = TAR_TOOLCHAIN_TYPE,
         use_default_shell_env = True,
         mnemonic = "OTP",
         progress_message = "Compiling otp{} from source".format(
@@ -447,11 +460,15 @@ erlang_build = rule(
         ),
         "sha256": tools["sha256"],
     },
+    toolchains = [TAR_TOOLCHAIN_TYPE],
 )
 
 def _erlang_release_archive_impl(ctx):
     release_dir = ctx.actions.declare_directory(ctx.label.name + "_release_dir")
     version_file = ctx.actions.declare_file(ctx.label.name + "_version")
+
+    tar_toolchain = ctx.toolchains[TAR_TOOLCHAIN_TYPE]
+    bsdtar = tar_toolchain.tarinfo.binary
 
     ctx.actions.run_shell(
         inputs = [ctx.file.tar],
@@ -462,18 +479,23 @@ ABS_TAR="$PWD/{tar}"
 ABS_RELEASE_DIR="$PWD/{release_dir}"
 ABS_VERSION_FILE="$PWD/{version_file}"
 
+{bsdtar_setup}
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# GNU tar autodetects compression, so this handles .tar, .tar.gz, and the
+# bsdtar autodetects compression, so this handles .tar, .tar.gz, and the
 # extensionless name http_file gives a downloaded archive -- no branching on
 # the filename suffix.
-tar -C "$WORK" --no-same-owner -xf "$ABS_TAR"
+bsdtar -C "$WORK" --no-same-owner -xf "$ABS_TAR"
 
 # Copy into the tree artifact, dereferencing any symlinks (tar -h) so the
 # output contains no symlinks (robust on remote execution) and preserving
 # executable bits -- regardless of how the input tarball was produced.
-tar -C "$WORK" -chf - . | tar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -
+# --no-mac-metadata: on a Mac bsdtar turns every extended attribute into an
+# AppleDouble ._* member, which would then land in the tree artifact. The
+# Linux binary takes the flag too, so it is unconditional.
+bsdtar -C "$WORK" -chf - --no-mac-metadata . | bsdtar -C "$ABS_RELEASE_DIR" --no-same-owner -xf -
 
 # OTP_VERSION is embedded at the release root by erlang_build; fall back to the
 # standard releases/<rel>/OTP_VERSION location for third-party tarballs.
@@ -494,7 +516,10 @@ echo "$OTP_REL" > "$ABS_VERSION_FILE"
             version_file = version_file.path,
             begins_with_fun = BEGINS_WITH_FUN,
             version = ctx.attr.version,
+            bsdtar_setup = bsdtar_setup(tar_toolchain, bsdtar.path),
         ),
+        tools = tar_toolchain.default.files,
+        toolchain = TAR_TOOLCHAIN_TYPE,
         use_default_shell_env = True,
         mnemonic = "OTPRelease",
         progress_message = "Extracting OTP release {}".format(ctx.label.name),
@@ -543,6 +568,7 @@ erlang_release_archive = rule(
         ),
     },
     provides = [OtpInfo],
+    toolchains = [TAR_TOOLCHAIN_TYPE],
 )
 
 def _erlang_external_impl(ctx):
