@@ -257,7 +257,12 @@ internal_erlang_from_http_archive = tag_class(attrs = {
         doc = "Label string for sysroot filegroup (e.g., '@sysroot_linux_aarch64//:sysroot').",
     ),
     "cc_configure_env": attr.string_list(
-        doc = "CC env vars as KEY=VALUE strings. {sysroot} and {toolchain} placeholders resolved at build time.",
+        doc = """CC env vars as KEY=VALUE strings. Only the first "=" splits the pair.
+
+Each entry becomes one `export KEY="VALUE"` line in the build action, so the
+shell expands $PWD, $VAR and $( ) in VALUE at action time. $PWD is the
+execroot. The {sysroot} and {toolchain} placeholders resolve to
+"$PWD/<workspace_root>" of cc_sysroot_files and cc_toolchain_files.""",
     ),
 })
 
@@ -294,7 +299,12 @@ internal_erlang_from_github_release = tag_class(attrs = {
         doc = "Label string for sysroot filegroup (e.g., '@sysroot_linux_aarch64//:sysroot').",
     ),
     "cc_configure_env": attr.string_list(
-        doc = "CC env vars as KEY=VALUE strings. {sysroot} and {toolchain} placeholders resolved at build time.",
+        doc = """CC env vars as KEY=VALUE strings. Only the first "=" splits the pair.
+
+Each entry becomes one `export KEY="VALUE"` line in the build action, so the
+shell expands $PWD, $VAR and $( ) in VALUE at action time. $PWD is the
+execroot. The {sysroot} and {toolchain} placeholders resolve to
+"$PWD/<workspace_root>" of cc_sysroot_files and cc_toolchain_files.""",
     ),
 })
 
