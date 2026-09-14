@@ -347,7 +347,7 @@ def _gmake_config(module_ctx):
     if "MAKE" in module_ctx.os.environ:
         gmake_path = module_ctx.os.environ["MAKE"]
         gmakes[GMAKE_DEFAULT_TOOLCHAIN_NAME] = gmake_path
-        log(module_ctx, "Using gnu make from env var MAKE: {}".for_target(gmake_path))
+        log(module_ctx, "Using gnu make from env var MAKE: {}".format(gmake_path))
     elif module_ctx.which("make") != None:
         gmake_path = module_ctx.which("make")
         gmakes[GMAKE_DEFAULT_TOOLCHAIN_NAME] = str(gmake_path)
