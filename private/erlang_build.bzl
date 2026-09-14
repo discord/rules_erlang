@@ -289,6 +289,13 @@ ABS_RELEASE_TAR=$PWD/{release_tar_path}
 ABS_LOG=$PWD/{build_log}
 EXECROOT=$PWD
 
+# Bazel sets no umask for an action, so the modes of the extracted tree, of
+# the `make release` output and of the tar members follow whatever umask the
+# worker happens to have. Measured on the sibling erlang_erts_layer artifact:
+# one identical tree gave 3fc5511b... under umask 022 and 3423eb06... under
+# umask 077. erlang_erts_layer.bzl pins 022 too; this is the remaining case.
+umask 022
+
 # The fixed path is the price of reproducibility (see _BUILD_ROOT_PREFIX).
 # Two builds of this target at once on an unsandboxed machine would share it,
 # so the lock turns that into a loud error instead of two makes in one tree.
