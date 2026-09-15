@@ -1,11 +1,11 @@
 load(
+    "@bazel_skylib//rules:common_settings.bzl",
+    "BuildSettingInfo",
+)
+load(
     "@bazel_tools//tools/build_defs/hash:hash.bzl",
     "sha256",
     "tools",
-)
-load(
-    "@bazel_skylib//rules:common_settings.bzl",
-    "BuildSettingInfo",
 )
 load(
     "//:util.bzl",
@@ -46,6 +46,15 @@ external erlang is used""",
 # <ERL_ROOT> (erts/etc/unix/Install.src).
 _INSTALL_PREFIX = "/tmp/bazel/erlang"
 
+# The build directory path ends up inside OTP's own outputs, so it has to be
+# a constant -- a `mktemp -d` here made 45 of 1682 files differ between two
+# builds of the same target. -ffile-prefix-map cannot fix it:
+# erts/emulator/Makefile.in:578 compiles the whole CFLAGS string into
+# beam.smp .rodata to serve erlang:system_info(compile_info), so the flag
+# would only record itself. DWARF comp_dir and megaco's two locally
+# recompiled flex-scanner beams leak the path too.
+_BUILD_ROOT_PREFIX = "/tmp/rules_erlang_build"
+
 # OTP's release_spec rules always copy src/ (see e.g.
 # lib/stdlib/src/Makefile's release_spec target) with no build-time flag to
 # skip it, so we strip it (and other unused-at-runtime dirs) here instead.
@@ -85,6 +94,17 @@ def _erlang_build_impl(ctx):
     install_path = path_join(_INSTALL_PREFIX, ctx.label.name)
 
     is_cross = ctx.attr.host_triplet != ""
+
+    # Keyed on what makes this a distinct OTP build, so a machine can hold
+    # several of them at once. Deliberately not keyed on anything
+    # checkout-specific (execroot, output base) -- that is the variance we
+    # are removing.
+    build_root_key = "-".join([
+        ctx.label.name,
+        ctx.attr.version,
+        ctx.attr.host_triplet if is_cross else "native",
+    ]).replace("/", "_")
+    build_root = path_join(_BUILD_ROOT_PREFIX, build_root_key)
 
     if is_cross and not ctx.attr.bootstrap_otp:
         fail("bootstrap_otp is required when cross-compiling (host_triplet is set)")
@@ -170,6 +190,7 @@ fi\
     # Build the bootstrap setup commands
     bootstrap_setup = ""
     bootstrap_inputs = []
+
     # cfg transitions turn attr.label into a list; unwrap it.
     bootstrap_otp = ctx.attr.bootstrap_otp[0] if ctx.attr.bootstrap_otp else None
     if bootstrap_otp != None:
@@ -199,22 +220,52 @@ fi\
     # sets ERL_ROOT to $PWD (the release dir) and uses the argument
     # only as the target path baked into boot scripts.
     install_cmds = """\
-${{MAKE}} release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
+${{MAKE}} -j1 release RELEASE_ROOT="$ABS_DEST_DIR" >> "$ABS_LOG" 2>&1
 echo "    make release finished"
 
 cd "$ABS_DEST_DIR"
 ./Install -cross -minimal {install_path} >> "$ABS_LOG" 2>&1
 echo "    Install script finished"
 
+# make/otp_released_app.mk does an unlocked read-modify-append here, so a
+# parallel release step could reorder, drop or duplicate an entry. -j1
+# above keeps that from ever being possible; this keeps the order stable
+# even if someone hands the release step a -j anyway.
+for f in releases/*/installed_application_versions; do
+    LC_ALL=C sort -o "$f" "$f"
+done
+
 # Embed OTP_VERSION at the release root so erlang_release_archive can read it
-# from any tarball, then create the relocatable release tarball. tar -h
-# dereferences the lone internal bin/epmd symlink into a plain file (so the
-# extracted tree has no symlinks -> robust on remote execution) while
-# preserving executable bits. Pipe through `gzip -n` (rather than tar's -z)
-# so the gzip header carries no mtime/filename -- keeps the archive bytes
-# (and therefore its sha256) deterministic across rebuilds.
+# from any tarball, then create the relocatable release tarball. Every flag
+# on the tar line is there so the same source gives the same sha256 on any
+# worker, not just on the one that happened to build it first.
+#
+# -h dereferences the lone internal bin/epmd symlink (OTP's Install.src does
+# `ln -s ../erts-*/bin/epmd epmd`) and preserves executable bits. On its own
+# it is not enough: tar spots the shared inode and writes a hard link member
+# instead of a second copy, pointing whichever way the traversal went.
+# --hard-dereference makes both plain files, for +0.06% gzipped.
+# --sort=name replaces raw readdir order. ext4 seeds its dirname hash per
+# filesystem, so that order is stable on one box and drifts across a fleet.
+# --mtime, --owner, --group and --numeric-owner zero the wall clock and the
+# builder's uid/gid/uname out of every header.
+# --format=gnu pins what is only a compile-time default -- see
+# `tar --show-defaults`.
+# gzip -n (rather than tar's -z) keeps mtime and filename out of the gzip
+# header. Background: https://reproducible-builds.org/docs/archives/
+#
+# These are all GNU tar flags, but so is the --transform on the extract
+# step, so bsdtar was never an option here. --sort=name does raise the
+# floor to GNU tar 1.28 (2014).
 cp "$ABS_BUILD_DIR/OTP_VERSION" ./OTP_VERSION
-tar -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
+tar --sort=name \\
+    --mtime=@0 \\
+    --owner=0 \\
+    --group=0 \\
+    --numeric-owner \\
+    --hard-dereference \\
+    --format=gnu \\
+    -chf - {release_excludes} . | gzip -n > "$ABS_RELEASE_TAR"\
 """.format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
 
     ctx.actions.run_shell(
@@ -238,8 +289,32 @@ ABS_RELEASE_TAR=$PWD/{release_tar_path}
 ABS_LOG=$PWD/{build_log}
 EXECROOT=$PWD
 
-ABS_BUILD_DIR="$(mktemp -d)"
-ABS_DEST_DIR="$(mktemp -d)"
+# Bazel sets no umask for an action, so the modes of the extracted tree, of
+# the `make release` output and of the tar members follow whatever umask the
+# worker happens to have. Measured on the sibling erlang_erts_layer artifact:
+# one identical tree gave 3fc5511b... under umask 022 and 3423eb06... under
+# umask 077. erlang_erts_layer.bzl pins 022 too; this is the remaining case.
+umask 022
+
+# The fixed path is the price of reproducibility (see _BUILD_ROOT_PREFIX).
+# Two builds of this target at once on an unsandboxed machine would share it,
+# so the lock turns that into a loud error instead of two makes in one tree.
+# The rm -rf is the other half: we always start empty, so a run that died
+# mid-build can never be silently resumed. Bazel never cleans /tmp, so we
+# remove the tree on the way out too; it is still captured in {build_path}.
+BUILD_ROOT="{build_root}"
+BUILD_LOCK="$BUILD_ROOT.lock"
+mkdir -p "{build_root_prefix}"
+if ! mkdir "$BUILD_LOCK" 2>/dev/null; then
+    echo "ERROR: $BUILD_ROOT is already in use by another build."
+    echo "       If no other build is running, remove $BUILD_LOCK and retry."
+    exit 1
+fi
+trap 'rm -rf "$BUILD_ROOT" "$BUILD_LOCK"' EXIT
+rm -rf "$BUILD_ROOT"
+ABS_BUILD_DIR="$BUILD_ROOT/build"
+ABS_DEST_DIR="$BUILD_ROOT/dest"
+mkdir -p "$ABS_BUILD_DIR" "$ABS_DEST_DIR"
 
 {bootstrap_setup}
 {cc_setup}
@@ -261,6 +336,9 @@ catch() {{
         --file "$ABS_BUILD_DIR_TAR" \\
         *
     echo "    build log: {build_log}"
+    # This trap replaced the one that held the cleanup, so redo it here.
+    cd /
+    rm -rf "$BUILD_ROOT" "$BUILD_LOCK"
 }}
 
 cd "$ABS_BUILD_DIR"
@@ -290,6 +368,8 @@ fi
             strip_prefix = strip_prefix,
             build_path = build_dir_tar.path,
             release_tar_path = release_tar.path,
+            build_root = build_root,
+            build_root_prefix = _BUILD_ROOT_PREFIX,
             install_path = install_path,
             build_log = build_log.path,
             begins_with_fun = BEGINS_WITH_FUN,

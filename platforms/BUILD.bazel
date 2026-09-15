@@ -12,16 +12,6 @@ constraint_value(
 )
 
 constraint_value(
-    name = "erlang_23",
-    constraint_setting = ":erlang_major_version",
-)
-
-constraint_value(
-    name = "erlang_24",
-    constraint_setting = ":erlang_major_version",
-)
-
-constraint_value(
     name = "erlang_25",
     constraint_setting = ":erlang_major_version",
 )
@@ -30,22 +20,6 @@ platform(
     name = "erlang_external_platform",
     constraint_values = [
         ":erlang_external",
-    ],
-    parents = ["@local_config_platform//:host"],
-)
-
-platform(
-    name = "erlang_23_platform",
-    constraint_values = [
-        ":erlang_23",
-    ],
-    parents = ["@local_config_platform//:host"],
-)
-
-platform(
-    name = "erlang_24_platform",
-    constraint_values = [
-        ":erlang_24",
     ],
     parents = ["@local_config_platform//:host"],
 )
