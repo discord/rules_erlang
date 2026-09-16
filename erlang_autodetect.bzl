@@ -9,11 +9,11 @@ load("@rules_erlang//:erlang_app_sources.bzl", "erlang_app_sources")
 
 def erlang_autodetect(name = None, testonly = False):
     app_src = None
-    app_src_paths = native.glob(["src/%s.app.src" % name])
+    app_src_paths = native.glob(["src/%s.app.src" % name], allow_empty = True)
     if len(app_src_paths) == 1:
         app_src = app_src_paths[0]
 
-    if len(native.glob(["Makefile", "erlang.mk"])) == 2:
+    if len(native.glob(["Makefile", "erlang.mk"], allow_empty = True)) == 2:
         erlc_opts_from_erlang_mk_makefile(
             name = "erlc_opts_file",
             srcs = native.glob([
@@ -30,7 +30,7 @@ def erlang_autodetect(name = None, testonly = False):
                 out = "src/%s.app.src" % name,
             )
             app_src = ":app_src"
-    elif len(native.glob(["rebar.config"])) == 1:
+    elif len(native.glob(["rebar.config"], allow_empty = True)) == 1:
         erlc_opts_from_rebar_config(
             name = "erlc_opts_file",
             out = "erlc_opts",

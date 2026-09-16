@@ -201,7 +201,7 @@ load("@rules_erlang//:erlang_autodetect.bzl", "erlang_autodetect")
 
 filegroup(
     name = "all_files",
-    srcs = glob(["**/*"]),
+    srcs = glob(["**/*"], allow_empty = True),
     visibility = ["//visibility:public"],
 )
 

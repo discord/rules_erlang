@@ -97,17 +97,17 @@ def _erlang_app(
         only_srcs = native.glob(
             ["src/**/*.erl"],
             exclude = extra_srcs,
-            allow_empty=True,
+            allow_empty = True,
         ) + extra_srcs
         private_hdrs = native.glob(
             ["src/**/*.hrl"],
             exclude = extra_hdrs,
-            allow_empty=True,
+            allow_empty = True,
         )
         public_hdrs = native.glob(
             ["include/**/*.hrl"],
             exclude = extra_hdrs,
-            allow_empty=True,
+            allow_empty = True,
         ) + extra_hdrs
 
         srcs = only_srcs + private_hdrs + public_hdrs
@@ -126,7 +126,7 @@ def _erlang_app(
 
         beam_files = [":beam_files" if not test else ":test_beam_files"]
 
-    if len(native.glob(["ebin/{}.app".format(app_name)], allow_empty=True)) == 0:
+    if len(native.glob(["ebin/{}.app".format(app_name)], allow_empty = True)) == 0:
         if not test:
             app_file(
                 name = "app_file",
@@ -138,7 +138,7 @@ def _erlang_app(
                 app_env = app_env,
                 app_extra_keys = app_extra_keys,
                 extra_apps = extra_apps,
-                app_src = native.glob(["src/{}.app.src".format(app_name)]),
+                app_src = native.glob(["src/{}.app.src".format(app_name)], allow_empty = True),
                 modules = beam_files,
                 deps = deps + runtime_deps,
                 dest = "ebin",
@@ -149,9 +149,9 @@ def _erlang_app(
     else:
         app = "ebin/{}.app".format(app_name)
 
-    if len(native.glob(["ebin/{}.appup".format(app_name)], allow_empty=True)) > 0:
+    if len(native.glob(["ebin/{}.appup".format(app_name)], allow_empty = True)) > 0:
         appup = "ebin/{}.appup".format(app_name)
-    elif len(native.glob(["src/{}.appup".format(app_name)], allow_empty=True)) > 0:
+    elif len(native.glob(["src/{}.appup".format(app_name)], allow_empty = True)) > 0:
         if not test:
             copy_file(
                 name = "appup",
@@ -168,14 +168,14 @@ def _erlang_app(
         priv = native.glob(
             ["priv/**/*"],
             exclude = extra_priv,
-            allow_empty=True,
+            allow_empty = True,
         ) + extra_priv
 
     if license_files == None:
         license_files = native.glob(
             ["LICENSE*"],
             exclude = extra_license_files,
-            allow_empty=True,
+            allow_empty = True,
         ) + extra_license_files
 
     erlang_app_info(

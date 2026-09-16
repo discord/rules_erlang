@@ -7,7 +7,7 @@ def erlc_opts_from_rebar_config(
     src = None,
     **kwargs):
     if src == None:
-        if len(native.glob(["rebar.config"])) == 1:
+        if len(native.glob(["rebar.config"], allow_empty = True)) == 1:
             src = "rebar.config"
         else:
             fail("rebar.config file not found")
