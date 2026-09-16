@@ -13,36 +13,36 @@ def erlang_app_sources(
         license_files = None,
         **kwargs):
     if app_src == None:
-        app_src_paths = native.glob(["src/%s.app.src" % app_name], allow_empty=True)
+        app_src_paths = native.glob(["src/%s.app.src" % app_name], allow_empty = True)
         if len(app_src_paths) == 1:
             app_src = app_src_paths[0]
 
     if public_hdrs == None:
         public_hdrs = native.glob([
             "include/**/*.hrl",
-        ], allow_empty=True)
+        ], allow_empty = True)
 
     if private_hdrs == None:
         private_hdrs = native.glob([
             "src/**/*.hrl",
-        ], allow_empty=True)
+        ], allow_empty = True)
 
     if srcs == None:
         srcs = native.glob([
             "src/**/*.erl",
-        ])
+        ], allow_empty = True)
 
     if priv == None:
         priv = native.glob(
             ["priv/**/*"],
             exclude = ["priv/**/.gitignore"],
-            allow_empty=True
+            allow_empty = True
         )
 
     if license_files == None:
         license_files = native.glob([
             "LICENSE*",
-        ], allow_empty=True)
+        ], allow_empty = True)
 
     _erlang_app_sources(
         app_name = app_name,
