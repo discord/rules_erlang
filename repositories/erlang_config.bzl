@@ -67,9 +67,7 @@ def _impl(repository_ctx):
             version = version,
             major = major,
             minor = minor,
-            url = repository_ctx.attr.urls.get(name, None),
             strip_prefix = repository_ctx.attr.strip_prefixs.get(name, None),
-            sha256 = repository_ctx.attr.sha256s.get(name, None),
             erlang_home = repository_ctx.attr.erlang_homes.get(name, None),
             pre_configure_cmds = repository_ctx.attr.pre_configure_cmdss.get(name, []),
             extra_configure_opts = repository_ctx.attr.extra_configure_optss.get(name, []),
@@ -87,6 +85,8 @@ def _impl(repository_ctx):
             # Label of the http_file-fetched tarball (@otp_<name>_prebuilt_archive//file,
             # set by the module extension); None for non-prebuilt installs.
             prebuilt_archive_label = repository_ctx.attr.prebuilt_archive_labels.get(name, None),
+            # @otp_<name>_source_archive//file; None for non-internal installs.
+            source_archive_label = repository_ctx.attr.source_archive_labels.get(name, None),
         )
 
     for (name, props) in erlang_installations.items():
@@ -153,9 +153,8 @@ def _impl(repository_ctx):
                 {
                     "%{ERLANG_NAME}": name,
                     "%{ERLANG_VERSION}": props.version,
-                    "%{URL}": props.url,
+                    "%{SOURCE_ARCHIVE_LABEL}": props.source_archive_label,
                     "%{STRIP_PREFIX}": props.strip_prefix or "",
-                    "%{SHA_256}": props.sha256 or "",
                     "%{ERLANG_MAJOR}": props.major,
                     "%{ERLANG_MINOR}": props.minor,
                     "%{RULES_ERLANG_WORKSPACE}": rules_erlang_workspace,
@@ -210,9 +209,7 @@ erlang_config = repository_rule(
         "rules_erlang_workspace": attr.string(),
         "types": attr.string_dict(),
         "versions": attr.string_dict(),
-        "urls": attr.string_dict(),
         "strip_prefixs": attr.string_dict(),
-        "sha256s": attr.string_dict(),
         "erlang_homes": attr.string_dict(),
         "pre_configure_cmdss": attr.string_list_dict(),
         "extra_configure_optss": attr.string_list_dict(),
@@ -233,6 +230,9 @@ erlang_config = repository_rule(
         # up-front, even if we don't use them.
         "prebuilt_archive_labels": attr.string_dict(
             doc = "name -> prebuilt tarball label, only for INSTALLATION_TYPE_PREBUILT installs.",
+        ),
+        "source_archive_labels": attr.string_dict(
+            doc = "name -> OTP source tarball label, only for INSTALLATION_TYPE_INTERNAL installs.",
         ),
     },
     # these are tracked, so that a change in ERLANG_HOME or PATH invalidates

@@ -3,11 +3,6 @@ load(
     "BuildSettingInfo",
 )
 load(
-    "@bazel_tools//tools/build_defs/hash:hash.bzl",
-    "sha256",
-    "tools",
-)
-load(
     "//:util.bzl",
     "BEGINS_WITH_FUN",
     "QUERY_ERL_VERSION",
@@ -75,8 +70,7 @@ RELEASE_TAR_EXCLUDES = " ".join([
 ])
 
 def _erlang_build_impl(ctx):
-    (_, _, filename) = ctx.attr.url.rpartition("/")
-    downloaded_archive = ctx.actions.declare_file(filename)
+    source_archive = ctx.file.source_archive
 
     build_dir_tar = ctx.actions.declare_file(ctx.label.name + "_build.tar")
     build_log = ctx.actions.declare_file(ctx.label.name + "_build.log")
@@ -108,29 +102,6 @@ def _erlang_build_impl(ctx):
 
     if is_cross and not ctx.attr.bootstrap_otp:
         fail("bootstrap_otp is required when cross-compiling (host_triplet is set)")
-
-    # At one point this rule received the erlang sources as a
-    # label_list attribute, which had been fetched with a repository
-    # rule. This had the unfortunate side effect of stripping out
-    # empty directories which are expected to be present by the
-    # otp makefiles. Instead this rule fetches the sources directly,
-    # which also avoids unnecessarily fetching sources when they are
-    # unused (such as when "external" erlang is used).
-    ctx.actions.run_shell(
-        inputs = [],
-        outputs = [downloaded_archive],
-        command = """set -euo pipefail
-
-curl -L "{archive_url}" -o {archive_path}
-""".format(
-            archive_url = ctx.attr.url,
-            archive_path = downloaded_archive.path,
-        ),
-        mnemonic = "OTP",
-        progress_message = "Downloading {}".format(ctx.attr.url),
-    )
-
-    sha256file = sha256(ctx, downloaded_archive)
 
     strip_prefix = ctx.attr.strip_prefix
     if strip_prefix != "":
@@ -269,20 +240,13 @@ tar --sort=name \\
 """.format(install_path = install_path, release_excludes = RELEASE_TAR_EXCLUDES)
 
     ctx.actions.run_shell(
-        inputs = [downloaded_archive, sha256file] + bootstrap_inputs + cc_inputs,
+        inputs = [source_archive] + bootstrap_inputs + cc_inputs,
         outputs = [
             build_dir_tar,
             build_log,
             release_tar,
         ],
         command = """set -euo pipefail
-
-if [ -n "{sha256}" ]; then
-    if [ "{sha256}" != "$(cat "{sha256file}")" ]; then
-        echo "ERROR: Checksum mismatch. $(basename "{archive_path}") $(cat "{sha256file}") != {sha256}"
-        exit 1
-    fi
-fi
 
 ABS_BUILD_DIR_TAR=$PWD/{build_path}
 ABS_RELEASE_TAR=$PWD/{release_tar_path}
@@ -362,9 +326,7 @@ if ! beginswith "{erlang_version}" "$OTP_REL"; then
     exit 1
 fi
 """.format(
-            sha256 = ctx.attr.sha256v,
-            sha256file = sha256file.path,
-            archive_path = downloaded_archive.path,
+            archive_path = source_archive.path,
             strip_prefix = strip_prefix,
             build_path = build_dir_tar.path,
             release_tar_path = release_tar.path,
@@ -402,9 +364,15 @@ erlang_build = rule(
     cfg = platform_independent_transition,
     attrs = {
         "version": attr.string(mandatory = True),
-        "url": attr.string(mandatory = True),
+        # Fetch this with http_file, not http_archive: http_archive drops
+        # empty directories, and OTP's makefiles need several of them. The
+        # build action untars it, which keeps them.
+        "source_archive": attr.label(
+            mandatory = True,
+            allow_single_file = True,
+            doc = "The OTP source tarball.",
+        ),
         "strip_prefix": attr.string(),
-        "sha256v": attr.string(),
         "pre_configure_cmds": attr.string_list(),
         "extra_configure_opts": attr.string_list(),
         "post_configure_cmds": attr.string_list(),
@@ -445,7 +413,6 @@ erlang_build = rule(
                   "Values may contain {sysroot} and {toolchain} placeholders, resolved to the " +
                   "absolute sandbox paths of cc_sysroot_files and cc_toolchain_files respectively.",
         ),
-        "sha256": tools["sha256"],
     },
 )
 
