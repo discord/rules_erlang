@@ -1,3 +1,4 @@
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load(":hex_archive.bzl", "hex_archive")
 load(
     "//repositories:erlang_config.bzl",
@@ -56,21 +57,33 @@ def erlang_config(
         internal_erlang_configs = []):
     types = {c.name: INSTALLATION_TYPE_INTERNAL for c in internal_erlang_configs}
     versions = {c.name: c.version for c in internal_erlang_configs}
-    urls = {c.name: c.url for c in internal_erlang_configs}
     strip_prefixs = {c.name: c.strip_prefix for c in internal_erlang_configs if c.strip_prefix}
-    sha256s = {c.name: c.sha256 for c in internal_erlang_configs if c.sha256}
     pre_configure_cmdss = {c.name: c.pre_configure_cmds for c in internal_erlang_configs if c.pre_configure_cmds}
     extra_configure_optss = {c.name: c.extra_configure_opts for c in internal_erlang_configs if c.extra_configure_opts}
     post_configure_cmdss = {c.name: c.post_configure_cmds for c in internal_erlang_configs if c.post_configure_cmds}
+
+    source_archive_labels = {}
+    for c in internal_erlang_configs:
+        if not c.sha256:
+            fail(("erlang installation '{}' has no sha256 for its source " +
+                  "tarball. Bazel's downloader refuses to cache an " +
+                  "unverified fetch, so every build would re-download " +
+                  "it.").format(c.name))
+        archive_repo = "otp_{}_source_archive".format(c.name)
+        http_file(
+            name = archive_repo,
+            urls = [c.url],
+            sha256 = c.sha256,
+        )
+        source_archive_labels[c.name] = "@{}//file".format(archive_repo)
 
     _erlang_config(
         name = "erlang_config",
         rules_erlang_workspace = rules_erlang_workspace,
         types = types,
         versions = versions,
-        urls = urls,
         strip_prefixs = strip_prefixs,
-        sha256s = sha256s,
+        source_archive_labels = source_archive_labels,
         pre_configure_cmdss = pre_configure_cmdss,
         extra_configure_optss = extra_configure_optss,
         post_configure_cmdss = post_configure_cmdss,

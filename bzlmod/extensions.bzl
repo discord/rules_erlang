@@ -36,12 +36,25 @@ load(
     "DEFAULT_ERLANG_VERSION",
 )
 
+def _otp_source_archive(name, urls, sha256):
+    """Fetch an OTP source tarball into its own repo, return its label."""
+    if not sha256:
+        fail(("erlang installation '{}' has no sha256 for its source tarball. " +
+              "Bazel's downloader refuses to cache an unverified fetch, so " +
+              "every build would re-download it.").format(name))
+
+    archive_repo = "otp_{}_source_archive".format(name)
+    http_file(
+        name = archive_repo,
+        urls = urls,
+        sha256 = sha256,
+    )
+    return "@{}//file".format(archive_repo)
+
 def _erlang_config(ctx):
     types = {}
     versions = {}
-    urls = {}
     strip_prefixs = {}
-    sha256s = {}
     erlang_homes = {}
     pre_configure_cmdss = {}
     extra_configure_optss = {}
@@ -57,6 +70,7 @@ def _erlang_config(ctx):
     cc_sysroot_filess = {}
     cc_configure_envss = {}
     prebuilt_archive_labels = {}
+    source_archive_labels = {}
     owners_by_name = {}
 
     for mod in ctx.modules:
@@ -83,9 +97,12 @@ def _erlang_config(ctx):
                 ))
             types[erlang.name] = INSTALLATION_TYPE_INTERNAL
             versions[erlang.name] = erlang.version
-            urls[erlang.name] = erlang.url
             strip_prefixs[erlang.name] = erlang.strip_prefix
-            sha256s[erlang.name] = erlang.sha256
+            source_archive_labels[erlang.name] = _otp_source_archive(
+                erlang.name,
+                [erlang.url],
+                erlang.sha256,
+            )
             pre_configure_cmdss[erlang.name] = erlang.pre_configure_cmds
             extra_configure_optss[erlang.name] = erlang.extra_configure_opts
             post_configure_cmdss[erlang.name] = erlang.post_configure_cmds
@@ -127,9 +144,12 @@ def _erlang_config(ctx):
 
             types[erlang.name] = INSTALLATION_TYPE_INTERNAL
             versions[erlang.name] = erlang.version
-            urls[erlang.name] = url
             strip_prefixs[erlang.name] = strip_prefix
-            sha256s[erlang.name] = sha256
+            source_archive_labels[erlang.name] = _otp_source_archive(
+                erlang.name,
+                [url],
+                sha256,
+            )
             pre_configure_cmdss[erlang.name] = erlang.pre_configure_cmds
             extra_configure_optss[erlang.name] = erlang.extra_configure_opts
             post_configure_cmdss[erlang.name] = erlang.post_configure_cmds
@@ -192,9 +212,7 @@ def _erlang_config(ctx):
         rules_erlang_workspace = "@rules_erlang",
         types = types,
         versions = versions,
-        urls = urls,
         strip_prefixs = strip_prefixs,
-        sha256s = sha256s,
         erlang_homes = erlang_homes,
         pre_configure_cmdss = pre_configure_cmdss,
         extra_configure_optss = extra_configure_optss,
@@ -210,6 +228,7 @@ def _erlang_config(ctx):
         cc_sysroot_filess = cc_sysroot_filess,
         cc_configure_envss = cc_configure_envss,
         prebuilt_archive_labels = prebuilt_archive_labels,
+        source_archive_labels = source_archive_labels,
     )
 
 # Documenting for future me, as these tend to be confusing:

@@ -16,9 +16,8 @@ load(
 erlang_build(
     name = "otp-%{ERLANG_NAME}_build",
     version = "%{ERLANG_VERSION}",
-    url = "%{URL}",
+    source_archive = "%{SOURCE_ARCHIVE_LABEL}",
     strip_prefix = "%{STRIP_PREFIX}",
-    sha256v = "%{SHA_256}",
     pre_configure_cmds = %{PRE_CONFIGURE_CMDS},
     extra_configure_opts = %{EXTRA_CONFIGURE_OPTS},
     post_configure_cmds = %{POST_CONFIGURE_CMDS},
