@@ -43,7 +43,7 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 mkdir -p "$WORK_DIR{install_prefix}"
-tar -C "$ABS_RELEASE_DIR" -cf - . | tar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
+tar -C "$ABS_RELEASE_DIR" -chf - . | tar -C "$WORK_DIR{install_prefix}" --no-same-owner -xf -
 tar -cf "$ABS_OUTPUT_TAR" -C "$WORK_DIR" .{install_prefix}
 
 """.format(
