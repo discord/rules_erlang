@@ -184,12 +184,10 @@ def _impl(repository_ctx):
         False,
     )
 
-    toolchains = []
-    for name in erlang_installations.keys():
-        toolchains.extend([
-            "@{}//{}:toolchain_major".format(repository_ctx.name, name),
-            "@{}//{}:toolchain_major_minor".format(repository_ctx.name, name),
-        ])
+    toolchains = [
+        "@{}//{}:toolchain".format(repository_ctx.name, name)
+        for name in erlang_installations.keys()
+    ]
 
     repository_ctx.template(
         "defaults.bzl",
