@@ -362,6 +362,7 @@ constraint_setting(
         names_by_minor = major_by_minors.setdefault(props.major, {})
         names_by_minor.setdefault(props.minor, []).append(name)
 
+    # The erlang_{major} alias below can only point at one minor.
     for (major, names_by_minor) in major_by_minors.items():
         if len(names_by_minor) > 1:
             fail("Erlang major version {} has more than one minor version ({}), from installations {}. Only one minor version per major version is supported.".format(
@@ -374,27 +375,20 @@ constraint_setting(
                 ]),
             ))
 
+    # Constraints have no hierarchy, so erlang_{major} is an alias rather
+    # than a sibling value. That lets one toolchain() match platforms that
+    # are written at either level.
     for (major, names_by_minor) in major_by_minors.items():
+        minor = names_by_minor.keys()[0]
         build_file_content += """\
-constraint_value(
-    name = "erlang_{major}",
-    constraint_setting = ":erlang_version",
-)
-
-platform(
-    name = "erlang_{major}_platform",
-    constraint_values = [
-        ":erlang_{major}",
-    ],
-)
-
-""".format(major = major)
-
-        for minor in names_by_minor.keys():
-            build_file_content += """\
 constraint_value(
     name = "erlang_{major}_{minor}",
     constraint_setting = ":erlang_version",
+)
+
+alias(
+    name = "erlang_{major}",
+    actual = ":erlang_{major}_{minor}",
 )
 
 platform(
