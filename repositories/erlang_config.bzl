@@ -359,12 +359,22 @@ constraint_setting(
 
     major_by_minors = {}
     for (name, props) in erlang_installations.items():
-        minors = major_by_minors.get(props.major, [])
-        if props.minor not in minors:
-            minors.append(props.minor)
-        major_by_minors[props.major] = minors
+        names_by_minor = major_by_minors.setdefault(props.major, {})
+        names_by_minor.setdefault(props.minor, []).append(name)
 
-    for (major, minors) in major_by_minors.items():
+    for (major, names_by_minor) in major_by_minors.items():
+        if len(names_by_minor) > 1:
+            fail("Erlang major version {} has more than one minor version ({}), from installations {}. Only one minor version per major version is supported.".format(
+                major,
+                ", ".join(["{}.{}".format(major, m) for m in names_by_minor.keys()]),
+                ", ".join([
+                    "{} ({}.{})".format(n, major, m)
+                    for (m, names) in names_by_minor.items()
+                    for n in names
+                ]),
+            ))
+
+    for (major, names_by_minor) in major_by_minors.items():
         build_file_content += """\
 constraint_value(
     name = "erlang_{major}",
@@ -380,7 +390,7 @@ platform(
 
 """.format(major = major)
 
-        for minor in minors:
+        for minor in names_by_minor.keys():
             build_file_content += """\
 constraint_value(
     name = "erlang_{major}_{minor}",
