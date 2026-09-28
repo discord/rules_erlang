@@ -28,26 +28,7 @@ erlang_toolchain(
 # (enforced in the module extension). The exec platform must declare
 # //:erlang_prebuilt (mirroring how internal toolchains require //:erlang_internal).
 toolchain(
-    name = "toolchain_major",
-    exec_compatible_with = [
-        "//:erlang_prebuilt",
-%{EXTRA_EXEC_CONSTRAINTS}    ],
-    target_compatible_with = [
-        "//:erlang_%{ERLANG_MAJOR}",
-%{EXTRA_TARGET_CONSTRAINTS}    ],
-    toolchain = ":erlang_%{ERLANG_MAJOR}_%{ERLANG_MINOR}_toolchain",
-    toolchain_type = "%{RULES_ERLANG_WORKSPACE}//tools:toolchain_type",
-    visibility = ["//visibility:public"],
-)
-
-alias(
     name = "toolchain",
-    actual = "toolchain_major",
-    visibility = ["//visibility:public"],
-)
-
-toolchain(
-    name = "toolchain_major_minor",
     exec_compatible_with = [
         "//:erlang_prebuilt",
 %{EXTRA_EXEC_CONSTRAINTS}    ],
@@ -56,11 +37,5 @@ toolchain(
 %{EXTRA_TARGET_CONSTRAINTS}    ],
     toolchain = ":erlang_%{ERLANG_MAJOR}_%{ERLANG_MINOR}_toolchain",
     toolchain_type = "%{RULES_ERLANG_WORKSPACE}//tools:toolchain_type",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "toolchain2",
-    actual = "toolchain_major_minor",
     visibility = ["//visibility:public"],
 )

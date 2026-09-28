@@ -9,13 +9,14 @@ platform(
     parents = ["@rbe//config:platform"],
 )
 
-# define an alias for @erlang_config//:erlang_26_platform, so
-# that it can be passed in the cli/.bazelrc and not encounter
-# the lack of mapping, as per
-# https://github.com/bazelbuild/bazel/issues/14852
-alias(
+# @erlang_config no longer generates a major-only platform, and a
+# repo-local label avoids https://github.com/bazelbuild/bazel/issues/14852
+# in .bazelrc. @erlang_config//:erlang_26 is an alias of the 26.x value.
+platform(
     name = "erlang_26_platform",
-    actual = "@erlang_config//:erlang_26_platform",
+    constraint_values = [
+        "@erlang_config//:erlang_26",
+    ],
 )
 
 erl_eval(

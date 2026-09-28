@@ -32,8 +32,7 @@ use_repo(
 )
 
 register_toolchains(
-    "@erlang_config//internal:toolchain_major",
-    "@erlang_config//internal:toolchain_major_minor",
+    "@erlang_config//internal:toolchain",
 )
 
 erlang_package = use_extension(
